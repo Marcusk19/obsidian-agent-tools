@@ -13,14 +13,25 @@ Claude can read notes, search your vault, navigate the graph, manage tasks, edit
 
 ## Install
 
+### Via npx (recommended)
+
+No clone or build needed:
+
 ```bash
-# Clone and build
-git clone https://github.com/yourusername/claude-obsidian.git
+claude mcp add obsidian -s user \
+  -e OBSIDIAN_VAULT_PATH=/path/to/your/vault \
+  -e OBSIDIAN_CLI_PATH=/Applications/Obsidian.app/Contents/MacOS/obsidian \
+  -- npx -y claude-obsidian
+```
+
+### From source
+
+```bash
+git clone https://github.com/Marcusk19/claude-obsidian.git
 cd claude-obsidian
 npm install
 npm run build
 
-# Register with Claude Code (user-wide)
 claude mcp add obsidian -s user \
   -e OBSIDIAN_VAULT_PATH=/path/to/your/vault \
   -e OBSIDIAN_CLI_PATH=/Applications/Obsidian.app/Contents/MacOS/obsidian \
