@@ -13,6 +13,7 @@ import { registerWriteTools } from "./tools/write.js";
 import { registerManageTools } from "./tools/manage.js";
 import { registerPropertyWriteTools } from "./tools/property-write.js";
 import { registerTaskUpdateTools } from "./tools/task-update.js";
+import { registerSessionTools } from "./tools/session.js";
 
 const server = new McpServer({
   name: "obsidian",
@@ -31,6 +32,7 @@ registerWriteTools(server);
 registerManageTools(server);
 registerPropertyWriteTools(server);
 registerTaskUpdateTools(server);
+registerSessionTools(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
