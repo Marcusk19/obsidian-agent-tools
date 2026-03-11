@@ -10,7 +10,7 @@ export function registerSessionTools(server: McpServer) {
     `Session management shortcuts for Claude Code workflows.
 Use 'context' at the start of a session or when asked to "catch me up", "what are we working on", or "start work" — reads today's daily note, open tasks, and active sessions in one call.
 Use 'morning' when asked for a "morning briefing", "start my day", or "daily kickoff" — reads recent daily notes, all open tasks, and project index for a structured agenda.
-Use 'seed' to gather graph-based context from a note — reads the seed note, follows backlinks and/or outgoing links, and returns compiled context from linked notes. Great for "give me context on X" requests.
+Use 'seed' when asked to "give me context on X", "what do I know about X", "background on X", "related notes for X", or "deep dive on X" — reads the seed note, follows backlinks and/or outgoing links, and returns compiled context from linked notes.
 Returns structured markdown. No configuration required; uses OBSIDIAN_SESSIONS_FILE env var (default: claude-sessions.md) for session tracking.`,
     {
       action: z
