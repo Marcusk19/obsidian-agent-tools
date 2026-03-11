@@ -10,7 +10,7 @@ export function registerSessionTools(server: McpServer) {
     `Session management shortcuts for Claude Code workflows.
 Use 'context' at the start of a session or when asked to "catch me up", "what are we working on", or "start work" — reads today's daily note, open tasks, and active sessions in one call.
 Use 'morning' when asked for a "morning briefing", "start my day", or "daily kickoff" — reads recent daily notes, all open tasks, and project index for a structured agenda.
-Use 'seed' when asked to "give me context on X", "what do I know about X", "background on X", "related notes for X", or "deep dive on X" — reads the seed note, follows backlinks and/or outgoing links, and returns compiled context from linked notes.
+Use 'seed' when asked to "give me context on X", "what do I know about X", "background on X", "related notes for X", "deep dive on X", "search my notes about X", or "find and explore X" — reads the seed note, follows backlinks and/or outgoing links, and returns compiled context from linked notes. Accepts 'file' or 'path' for a known note, or 'query' to search the vault first and seed from the top result.
 Returns structured markdown. No configuration required; uses OBSIDIAN_SESSIONS_FILE env var (default: claude-sessions.md) for session tracking.`,
     {
       action: z
@@ -28,6 +28,10 @@ Returns structured markdown. No configuration required; uses OBSIDIAN_SESSIONS_F
         .string()
         .optional()
         .describe("For 'seed' action: exact file path (alternative to file)"),
+      query: z
+        .string()
+        .optional()
+        .describe("For 'seed' action: search query to find seed note (alternative to file/path)"),
       depth: z
         .number()
         .optional()
@@ -42,19 +46,41 @@ Returns structured markdown. No configuration required; uses OBSIDIAN_SESSIONS_F
         .describe("For 'seed' action: which link direction to follow (default 'both')"),
     },
     { readOnlyHint: true },
-    async ({ action, days, file, path, depth, max_notes, include }) => {
+    async ({ action, days, file, path, query, depth, max_notes, include }) => {
       const today = new Date().toISOString().slice(0, 10);
 
       if (action === "seed") {
-        if (!file && !path) {
+        if (!file && !path && !query) {
           return {
-            content: [{ type: "text" as const, text: "Error: 'seed' action requires either 'file' or 'path' parameter." }],
+            content: [{ type: "text" as const, text: "Error: 'seed' action requires 'file', 'path', or 'query' parameter." }],
             isError: true,
           };
         }
 
-        const readArg = file ? { file } : { path: path! };
-        const seedLabel = file || path!;
+        // If query provided (and no file/path), search and use top result
+        let resolvedFile = file;
+        let resolvedPath = path;
+        if (!resolvedFile && !resolvedPath && query) {
+          try {
+            const searchResult = await execObsidian("search", { query, limit: 1 });
+            const lines = searchResult.trim().split("\n").filter(Boolean);
+            if (lines.length === 0) {
+              return {
+                content: [{ type: "text" as const, text: `No notes found matching query: "${query}"` }],
+                isError: true,
+              };
+            }
+            resolvedPath = lines[0].trim();
+          } catch {
+            return {
+              content: [{ type: "text" as const, text: `Search failed for query: "${query}"` }],
+              isError: true,
+            };
+          }
+        }
+
+        const readArg = resolvedFile ? { file: resolvedFile } : { path: resolvedPath! };
+        const seedLabel = resolvedFile || resolvedPath!;
         const maxDepth = Math.min(Math.max(depth ?? 1, 1), 2);
         const budget = Math.min(Math.max(max_notes ?? 10, 1), 20);
         const direction = include ?? "both";

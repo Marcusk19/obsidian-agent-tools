@@ -5,7 +5,7 @@ import { execObsidian } from "../cli.js";
 export function registerSearchTools(server: McpServer) {
   server.tool(
     "obsidian_search",
-    "Search the vault for text. Use context=true to include matching line context",
+    "Search the vault for text. Use context=true to include matching line context. For deeper context on a topic, use obsidian_session(action='seed', query=...) which searches and then follows graph links from the result.",
     {
       query: z.string().describe("Search query text"),
       context: z
