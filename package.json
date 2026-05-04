@@ -11,7 +11,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && cp -r src/db/migrations dist/db/",
     "dev": "tsc --watch",
     "prepublishOnly": "npm run build"
   },
@@ -30,11 +30,20 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@anthropic-ai/vertex-sdk": "^0.16.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "better-sqlite3": "^12.9.0",
+    "sqlite-vec": "^0.1.9",
     "zod": "^3.25.11"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.21",
     "typescript": "^5.8.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   }
 }

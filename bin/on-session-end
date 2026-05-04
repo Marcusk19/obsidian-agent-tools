@@ -1,0 +1,33 @@
+#!/bin/bash
+# Claude Code SessionEnd hook: spawn session summarizer in the background.
+# Reads hook JSON from stdin, saves to temp file, exits immediately.
+# The summarizer runs asynchronously — this hook returns in <1s.
+
+set -euo pipefail
+
+# Resolve project root relative to this script
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+DATA_DIR="${CLAUDE_OBSIDIAN_DATA_DIR:-${HOME}/.local/share/claude-obsidian}"
+SUMMARIZER="${PROJECT_DIR}/dist/summarizer/index.js"
+
+# Bail if not built
+if [ ! -f "$SUMMARIZER" ]; then
+  echo "claude-obsidian: summarizer not built, skipping" >&2
+  exit 0
+fi
+
+# Save stdin (hook JSON) to temp file
+TMPFILE=$(mktemp /tmp/claude-obsidian-hook.XXXXXX)
+cat > "$TMPFILE"
+
+# Ensure data dir exists for logs
+mkdir -p "$DATA_DIR"
+
+# Spawn summarizer in background and exit
+nohup node "$SUMMARIZER" "$TMPFILE" \
+  >> "${DATA_DIR}/summarize.log" 2>&1 &
+
+# Clean up temp file after a delay (give the process time to read it)
+(sleep 5 && rm -f "$TMPFILE") &
