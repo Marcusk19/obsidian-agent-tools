@@ -50,6 +50,53 @@ claude mcp add obsidian -s user \
 
 The MCP server provides vault information, note read/write/manage operations, search, graph navigation, tags, aliases, properties, tasks, session context, and searchable session summaries.
 
+## Agent memory skill
+
+This repository also packages the autonomous `agent-memory` skill. It stores durable corrections, preferences, and reusable failure/workaround patterns as individual notes under:
+
+```text
+$OBSIDIAN_VAULT/3_Resource/agent memory/
+```
+
+The skill prefers the `obsidian-agent-tools` MCP server when available. In Pi, where MCP is not used, it falls back to the Obsidian CLI through `Bash`. Set `OBSIDIAN_VAULT` and, when necessary, `OBSIDIAN_CLI_PATH` for the CLI fallback.
+
+### Install with Lola
+
+Register this repository as a Lola module, then install its skills for Claude Code at user scope:
+
+```bash
+lola mod add https://github.com/Marcusk19/obsidian-agent-tools.git \\
+  --name obsidian-agent-tools
+lola install obsidian-agent-tools \\
+  --assistant claude-code \\
+  --scope user \\
+  --force \\
+  --append-context module/AGENTS.md
+```
+
+The module contains the skill at `module/skills/agent-memory/SKILL.md` and the
+always-on instructions at `module/AGENTS.md`. `--append-context` installs the
+module instructions without replacing the rest of the assistant's global context.
+If the module was previously registered, update it before reinstalling:
+
+```bash
+lola mod update obsidian-agent-tools
+lola install obsidian-agent-tools --assistant claude-code --scope user --force \\
+  --append-context module/AGENTS.md
+```
+
+Lola currently lists Claude Code, Cursor, Gemini CLI, OpenClaw, and OpenCode as
+installation targets; Pi is not a Lola target yet. For Pi, install the same skill
+manually after cloning the repository:
+
+```bash
+mkdir -p ~/.agents/skills/agent-memory
+cp module/skills/agent-memory/SKILL.md ~/.agents/skills/agent-memory/SKILL.md
+```
+
+Pi will use the CLI fallback documented in the skill because no MCP server is
+required.
+
 ## Shared session summaries
 
 Both runtimes write new summaries to:
