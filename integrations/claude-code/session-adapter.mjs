@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
 
 const input = JSON.parse(readFileSync(0, "utf8"));
 const transcriptPath = input.transcript_path;
-if (!transcriptPath) process.exit(0);
+if (!transcriptPath || !existsSync(transcriptPath)) process.exit(0);
 
 const turns = [];
 for (const line of readFileSync(transcriptPath, "utf8").split("\n")) {
