@@ -1,5 +1,5 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
@@ -7,6 +7,16 @@ import { spawn } from "node:child_process";
 
 interface ContentBlock { type: string; text?: string }
 interface SessionEntry { type: string; message?: { role?: string; content?: string | ContentBlock[] } }
+
+function log(message: string): void {
+  try {
+    const dir = join(process.env.HOME || "/tmp", ".local", "share", "obsidian-agent-tools");
+    mkdirSync(dir, { recursive: true });
+    appendFileSync(join(dir, "pi-extension.log"), `[${new Date().toISOString()}] ${message}\n`);
+  } catch {
+    // Diagnostics are best effort.
+  }
+}
 
 function textOf(content: string | ContentBlock[] | undefined): string {
   if (typeof content === "string") return content;
@@ -27,23 +37,29 @@ export function buildPiTranscript(entries: SessionEntry[]): string | null {
 export default function obsidianAgentTools(pi: ExtensionAPI): void {
   pi.on("session_shutdown", async (event, ctx) => {
     try {
-      if ((event as { reason?: string }).reason !== "quit") return;
+      const reason = (event as { reason?: string }).reason;
+      log(`shutdown reason=${reason}`);
+      if (reason !== "quit") return;
       const transcript = buildPiTranscript(ctx.sessionManager.getBranch() as SessionEntry[]);
-      if (!transcript) return;
+      if (!transcript) {
+        log("skipping: session too short or branch had no user/assistant text");
+        return;
+      }
       const directory = join(tmpdir(), `obsidian-agent-tools-${randomBytes(6).toString("hex")}`);
       mkdirSync(directory, { recursive: true });
       const file = join(directory, "session.json");
       writeFileSync(file, JSON.stringify({
         runtime: "pi",
-        sessionId: ctx.sessionManager.getSessionId?.() || "unknown",
+        sessionId: ctx.sessionManager.getSessionFile?.() || "unknown",
         transcript,
         cwd: ctx.cwd,
       }));
-      const executable = process.env.OBSIDIAN_AGENT_SUMMARIZER || "obsidian-agent-summarize";
+      const executable = process.env.OBSIDIAN_AGENT_SUMMARIZER || join(process.env.HOME || "/tmp", ".local", "bin", "obsidian-agent-summarize");
       const child = spawn(executable, [file], { detached: true, stdio: "ignore", env: { ...process.env } });
       child.unref();
-    } catch {
-      // Session shutdown integration is best effort.
+      log(`spawned summarizer for ${file}`);
+    } catch (error) {
+      log(`shutdown error: ${error instanceof Error ? error.stack || error.message : String(error)}`);
     }
   });
 }
