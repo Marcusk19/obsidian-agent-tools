@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
 
@@ -38,6 +39,7 @@ const normalized = {
 const directory = mkdtempSync(join(tmpdir(), "obsidian-agent-tools-"));
 const file = join(directory, "session.json");
 writeFileSync(file, JSON.stringify(normalized));
-const executable = process.env.OBSIDIAN_AGENT_SUMMARIZER || join(process.cwd(), "bin", "obsidian-agent-summarize");
+const repoDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
+const executable = process.env.OBSIDIAN_AGENT_SUMMARIZER || join(repoDir, "bin", "obsidian-agent-summarize");
 const child = spawn(executable, [file], { detached: true, stdio: "ignore", env: process.env });
 child.unref();

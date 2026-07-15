@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 INPUT="$(cat)"
+export OBSIDIAN_AGENT_TOOLS_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 node --input-type=module - "$INPUT" <<'NODE'
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -21,7 +22,7 @@ writeFileSync(file, JSON.stringify({
   transcript: `[user]: Session compaction\n\n[assistant]: ${summary}`,
   cwd: input.cwd || process.cwd(),
 }));
-const executable = process.env.OBSIDIAN_AGENT_SUMMARIZER || join(process.cwd(), "bin", "obsidian-agent-summarize");
+const executable = process.env.OBSIDIAN_AGENT_SUMMARIZER || join(process.env.OBSIDIAN_AGENT_TOOLS_DIR || process.cwd(), "bin", "obsidian-agent-summarize");
 const child = spawn(executable, [file], { detached: true, stdio: "ignore", env: process.env });
 child.unref();
 NODE
