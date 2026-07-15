@@ -6,8 +6,8 @@ import { fileURLToPath } from "node:url";
 import { dirname } from "node:path";
 
 const DATA_DIR =
-  process.env.CLAUDE_OBSIDIAN_DATA_DIR ||
-  join(process.env.HOME || "/tmp", ".local", "share", "claude-obsidian");
+  process.env.OBSIDIAN_DATA_DIR ||
+  join(process.env.HOME || "/tmp", ".local", "share", "obsidian-agent-tools");
 
 const DB_PATH = join(DATA_DIR, "summaries.db");
 

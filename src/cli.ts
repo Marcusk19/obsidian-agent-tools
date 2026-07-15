@@ -1,10 +1,12 @@
 import { execFile } from "node:child_process";
+import { join } from "node:path";
 
 const CLI_PATH =
   process.env.OBSIDIAN_CLI_PATH ||
   "/Applications/Obsidian.app/Contents/MacOS/obsidian";
 const VAULT_PATH =
-  process.env.OBSIDIAN_VAULT_PATH || "/Users/mkok/obsidian-git-sync";
+  process.env.OBSIDIAN_VAULT ||
+  join(process.env.HOME || "/tmp", "obsidian-git-sync");
 
 export function execObsidian(
   command: string,

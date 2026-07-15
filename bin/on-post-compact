@@ -2,4 +2,4 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-exec node "$SCRIPT_DIR/../integrations/claude-code/session-adapter.mjs"
+exec "$SCRIPT_DIR/../integrations/claude-code/on-post-compact"

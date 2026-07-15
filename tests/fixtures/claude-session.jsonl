@@ -1,0 +1,4 @@
+{"type":"user","message":{"content":"Please improve the session integration and verify the generated output."}}
+{"type":"assistant","message":{"content":[{"type":"text","text":"I implemented the shared pipeline, added local Ollama configuration, and verified the build and tests. The remaining work is to review the integration setup and document the installation steps."}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"bash","input":{}}]}}
+not-json

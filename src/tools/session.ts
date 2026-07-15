@@ -265,14 +265,6 @@ Returns structured markdown. No configuration required; uses OBSIDIAN_SESSIONS_F
         sections.push(`### Open Tasks\n\n(could not read tasks)`);
       }
 
-      // Project index
-      try {
-        const projectIndex = await execObsidian("read", { path: "1_Projects/index.md" });
-        sections.push(`### Projects Overview\n\n${projectIndex.trim()}`);
-      } catch {
-        // Skip silently — not everyone has this file
-      }
-
       return { content: [{ type: "text" as const, text: sections.join("\n\n") }] };
     }
   );

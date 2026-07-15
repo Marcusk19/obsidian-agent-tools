@@ -1,139 +1,94 @@
-# claude-obsidian
+# obsidian-agent-tools
 
-An MCP server that gives [Claude Code](https://docs.anthropic.com/en/docs/claude-code) full access to your [Obsidian](https://obsidian.md) vault through Obsidian's built-in CLI.
-
-Claude can read notes, search your vault, navigate the graph, manage tasks, edit properties, create and modify notes — all without leaving the terminal.
+Cross-harness tools for using an Obsidian vault from agent runtimes. The package provides an MCP server for notebook operations and shared local session summarization for Claude Code and Pi.
 
 ## Prerequisites
 
-- **Obsidian** with CLI support (v1.8+, macOS). The CLI binary lives at `/Applications/Obsidian.app/Contents/MacOS/obsidian`.
-- **Obsidian must be running** — the CLI communicates with the running app.
-- **Node.js** v18+
-- **Claude Code** installed
+- Obsidian with CLI support (v1.8+, macOS)
+- Node.js >=18
+- Ollama
+- Claude Code and/or Pi, if lifecycle summaries are desired
 
-## Install
-
-### Via npx (recommended)
-
-No clone or build needed:
-
-```bash
-claude mcp add obsidian -s user \
-  -e OBSIDIAN_VAULT_PATH=/path/to/your/vault \
-  -e OBSIDIAN_CLI_PATH=/Applications/Obsidian.app/Contents/MacOS/obsidian \
-  -- npx -y claude-obsidian
-```
-
-### From source
-
-```bash
-git clone https://github.com/Marcusk19/claude-obsidian.git
-cd claude-obsidian
-npm install
-npm run build
-
-claude mcp add obsidian -s user \
-  -e OBSIDIAN_VAULT_PATH=/path/to/your/vault \
-  -e OBSIDIAN_CLI_PATH=/Applications/Obsidian.app/Contents/MacOS/obsidian \
-  -- node /absolute/path/to/claude-obsidian/dist/index.js
-```
-
-Restart Claude Code to pick up the new server.
-
-### Environment variables
+## Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OBSIDIAN_VAULT_PATH` | `/Users/mkok/obsidian-git-sync` | Absolute path to your Obsidian vault |
-| `OBSIDIAN_CLI_PATH` | `/Applications/Obsidian.app/Contents/MacOS/obsidian` | Path to the Obsidian CLI binary |
-| `OBSIDIAN_SESSIONS_FILE` | `claude-sessions.md` | Vault-relative path to the session tracking file read by `obsidian_session context` |
+| `OBSIDIAN_VAULT` | `$HOME/obsidian-git-sync` | Absolute Obsidian vault path |
+| `OBSIDIAN_DATA_DIR` | `$HOME/.local/share/obsidian-agent-tools` | SQLite database and summarizer logs |
+| `OBSIDIAN_CLI_PATH` | `/Applications/Obsidian.app/Contents/MacOS/obsidian` | Obsidian CLI binary |
+| `OLLAMA_HOST` | `http://127.0.0.1:11434` | Local Ollama endpoint |
+| `OBSIDIAN_SUMMARY_MODEL` | `qwen2.5:7b` | Local model used for session summaries |
+| `OBSIDIAN_AGENT_SUMMARIZER` | repository launcher | Override the shared summarizer executable |
 
-## Tools
+Session summaries are generated locally. Transcripts are not sent to Vertex AI or another remote provider.
 
-### Read-only
-
-| Tool | Description |
-|------|-------------|
-| `obsidian_vault_info` | Vault overview, file/folder listing, recents, bookmarks |
-| `obsidian_read` | Read note contents, daily note, file info, or outline. Includes `daily:recent` for fetching the last N daily notes |
-| `obsidian_search` | Full-text search with optional line context |
-| `obsidian_graph` | Backlinks, outgoing links, orphans, dead-ends, unresolved links |
-| `obsidian_tags` | List all tags or get info about a specific tag |
-| `obsidian_properties` | List properties or read a property value |
-| `obsidian_tasks` | List tasks, filter by status/file/daily note |
-| `obsidian_aliases` | List aliases in the vault |
-| `obsidian_session` | Session orchestration: `context` (start-of-session briefing) and `morning` (daily kickoff agenda) |
-
-### Destructive
-
-These tools require confirmation before Claude executes them.
-
-| Tool | Description |
-|------|-------------|
-| `obsidian_write` | Create notes, append/prepend to notes or daily notes |
-| `obsidian_manage` | Move, rename, or delete notes |
-| `obsidian_property_write` | Set or remove properties on notes |
-| `obsidian_task_update` | Toggle, complete, or uncomplete tasks |
-
-## Usage examples
-
-Once registered, just ask Claude naturally:
-
-- *"What's in my daily note?"*
-- *"Search my vault for kubernetes"*
-- *"Show me all incomplete tasks"*
-- *"Append 'Review PR #42' to today's daily note"*
-- *"What notes link to my Konflux project note?"*
-- *"List all tags sorted by count"*
-
-### Session workflows
-
-These workflows require no CLAUDE.md configuration — the tool descriptions teach Claude when to invoke them automatically.
-
-**Start of session** — say *"catch me up"*, *"what are we working on?"*, or *"start work"*:
-
-Claude calls `obsidian_session context`, which returns in one shot:
-- Contents of your sessions file (`claude-sessions.md` by default)
-- All open tasks
-- Today's daily note
-
-**Morning kickoff** — say *"morning briefing"*, *"start my day"*, or *"daily kickoff"*:
-
-Claude calls `obsidian_session morning`, which returns:
-- Last 3 daily notes for recent context
-- All open tasks
-- Your projects index (`1_Projects/index.md`) if it exists
-
-**Session handoff** — at the end of a session, ask Claude to write a handoff note:
-
-Claude uses `obsidian_write daily:append` to append a summary to today's daily note, and `obsidian_write create` to update `claude-sessions.md`. Recommended template:
-
-```markdown
-## Session handoff — 2026-03-08
-
-### What we did
-- ...
-
-### Open threads
-- [ ] ...
-
-### Next steps
-- ...
-```
-
-**Reading recent context** — ask Claude for the last few days of notes:
-
-Claude calls `obsidian_read` with `action=daily:recent, days=3`.
-
-## Verify
-
-After registering, run `/mcp` in Claude Code to confirm the server is connected and all 14 tools are available.
-
-## Uninstall
+## Build and test
 
 ```bash
-claude mcp remove obsidian -s user
+npm install
+npm run build
+npm test
 ```
+
+Install the local model once, or let the summarizer pull it when the first session ends:
+
+```bash
+ollama pull qwen2.5:7b
+```
+
+## MCP server
+
+Register the MCP server with Claude Code or another MCP client:
+
+```bash
+npm run build
+claude mcp add obsidian -s user \
+  -e OBSIDIAN_VAULT=/absolute/path/to/your/vault \
+  -e OBSIDIAN_CLI_PATH=/Applications/Obsidian.app/Contents/MacOS/obsidian \
+  -- node /absolute/path/to/obsidian-agent-tools/dist/index.js
+```
+
+The MCP server provides vault information, note read/write/manage operations, search, graph navigation, tags, aliases, properties, tasks, session context, and searchable session summaries.
+
+## Shared session summaries
+
+Both runtimes write new summaries to:
+
+```text
+$OBSIDIAN_VAULT/4_Archive/_agent_sessions/YYYY-MM-DD.md
+```
+
+Existing `_claude_sessions` and `_pi_sessions` files are intentionally left in place.
+
+Entries use the same format for both runtimes:
+
+```markdown
+### 10:32 — Improve session summarization
+
+The session summary is a concise plain-prose handoff.
+
+**Runtime:** `pi`
+**Session:** `abc123`
+**CWD:** `~/workspace/project`
+```
+
+### Claude Code
+
+Configure the SessionEnd hook to invoke `integrations/claude-code/on-session-end`. The hook reads Claude's hook JSON, normalizes the transcript, and launches the shared summarizer without blocking shutdown. The PostCompact hook is available at `integrations/claude-code/on-post-compact`.
+
+Set `OBSIDIAN_AGENT_SUMMARIZER` to the absolute path of `bin/obsidian-agent-summarize` when the hook is installed outside this checkout.
+
+### Pi
+
+Load `integrations/pi/obsidian-agent-tools.ts` as a Pi extension. Set `OBSIDIAN_AGENT_SUMMARIZER` to the absolute path of `bin/obsidian-agent-summarize`, then start Pi with the extension enabled. The extension summarizes only actual quit events and runs the shared process detached.
+
+## Search
+
+Summaries are also indexed in SQLite under `OBSIDIAN_DATA_DIR`. Keyword and semantic search use the local Ollama embedding model when available; Markdown output is preserved even if indexing or embeddings fail.
+
+## Migration from claude-obsidian
+
+This project is the generalized successor to `claude-obsidian`. The old repository is being archived. There are no old package-name or old environment-variable compatibility aliases in this project. Existing `_claude_sessions` and `_pi_sessions` directories are not moved or copied.
 
 ## License
 

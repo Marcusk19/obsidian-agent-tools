@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+INPUT="$(cat)"
+node --input-type=module - "$INPUT" <<'NODE'
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { spawn } from "node:child_process";
+
+const input = JSON.parse(process.argv[2]);
+const summary = String(input.summary || "").trim();
+if (!summary) process.exit(0);
+const directory = `${tmpdir()}/obsidian-agent-tools-compact-${Date.now()}`;
+mkdirSync(directory, { recursive: true });
+const file = join(directory, "session.json");
+writeFileSync(file, JSON.stringify({
+  runtime: "claude-code",
+  sessionId: input.session_id || "unknown",
+  transcript: `[user]: Session compaction\n\n[assistant]: ${summary}`,
+  cwd: input.cwd || process.cwd(),
+}));
+const executable = process.env.OBSIDIAN_AGENT_SUMMARIZER || join(process.cwd(), "bin", "obsidian-agent-summarize");
+const child = spawn(executable, [file], { detached: true, stdio: "ignore", env: process.env });
+child.unref();
+NODE

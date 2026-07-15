@@ -1,4 +1,4 @@
-const OLLAMA_URL = process.env.OLLAMA_URL || "http://localhost:11434";
+const OLLAMA_URL = (process.env.OLLAMA_HOST || "http://127.0.0.1:11434").replace(/\/$/, "");
 const MODEL = "nomic-embed-text";
 const MAX_RETRIES = 3;
 const TIMEOUT_MS = 30_000;

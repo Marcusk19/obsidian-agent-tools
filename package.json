@@ -1,36 +1,41 @@
 {
-  "name": "claude-obsidian",
+  "name": "obsidian-agent-tools",
   "version": "1.0.1",
-  "description": "MCP server for Obsidian vault management via CLI",
+  "description": "Cross-harness Obsidian tools and local agent session summaries",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "claude-obsidian": "dist/index.js"
+    "obsidian-agent-tools": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "bin",
+    "integrations"
   ],
   "scripts": {
-    "build": "tsc && cp -r src/db/migrations dist/db/",
+    "build": "rm -rf dist && tsc && cp -r src/db/migrations dist/db/",
     "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },
   "keywords": [
     "mcp",
     "obsidian",
-    "claude",
+    "agents",
+    "pi",
+    "claude-code",
     "model-context-protocol"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Marcusk19/claude-obsidian"
+    "url": "https://github.com/Marcusk19/obsidian-agent-tools"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
-    "@anthropic-ai/vertex-sdk": "^0.16.0",
     "@modelcontextprotocol/sdk": "^1.12.1",
     "better-sqlite3": "^12.9.0",
     "sqlite-vec": "^0.1.9",
@@ -39,7 +44,8 @@
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^22.15.21",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
   },
   "pnpm": {
     "onlyBuiltDependencies": [

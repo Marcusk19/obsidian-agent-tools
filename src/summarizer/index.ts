@@ -1,31 +1,18 @@
 import { readFileSync, appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
-import { parseTranscript, formatTranscript } from "./transcript.js";
-import { summarizeTranscript } from "./vertex.js";
-import { appendSummary } from "./daily-note.js";
-import { getDb, indexSummary } from "../db/index.js";
-import { embed } from "../search/embed.js";
+import { loadConfig } from "../core/config.js";
+import { createSessionPipeline } from "../core/session-pipeline.js";
 
-interface HookInput {
-  session_id: string;
-  transcript_path: string;
-  cwd: string;
-}
+const config = loadConfig();
 
-const DATA_DIR =
-  process.env.CLAUDE_OBSIDIAN_DATA_DIR ||
-  join(process.env.HOME || "/tmp", ".local", "share", "claude-obsidian");
-
-function log(msg: string): void {
-  const timestamp = new Date().toISOString();
-  const line = `[${timestamp}] ${msg}\n`;
+function log(message: string): void {
+  const line = `[${new Date().toISOString()}] ${message}\n`;
   process.stderr.write(line);
   try {
-    mkdirSync(DATA_DIR, { recursive: true });
-    appendFileSync(join(DATA_DIR, "summarize.log"), line);
+    mkdirSync(config.dataDir, { recursive: true });
+    appendFileSync(join(config.dataDir, "summarize.log"), line);
   } catch {
-    // Best effort
+    // Logging is best effort.
   }
 }
 
@@ -33,70 +20,27 @@ async function main(): Promise<void> {
   const tempFile = process.argv[2];
   if (!tempFile) {
     log("error: no temp file argument provided");
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
-  let input: HookInput;
+  let input: unknown;
   try {
-    input = JSON.parse(readFileSync(tempFile, "utf-8"));
-  } catch (err) {
-    log(`error: failed to read hook input: ${err}`);
-    process.exit(1);
-  }
-
-  const { session_id, transcript_path, cwd } = input;
-
-  if (!transcript_path) {
-    log("skipping: no transcript_path");
+    input = JSON.parse(readFileSync(tempFile, "utf8"));
+  } catch (error) {
+    log(`error: failed to read session input: ${error}`);
+    process.exitCode = 1;
     return;
-  }
-
-  log(`processing session ${session_id} (cwd: ${cwd})`);
-
-  // 1. Parse transcript
-  const turns = parseTranscript(transcript_path);
-  if (!turns) {
-    log("skipping: session too short");
-    return;
-  }
-  log(`parsed ${turns.length} turns`);
-
-  // 2. Summarize via Vertex AI
-  const formatted = formatTranscript(turns);
-  const result = await summarizeTranscript(formatted);
-  if (!result) {
-    log("error: summarization returned no result");
-    return;
-  }
-  log(`summary: "${result.topic}"`);
-
-  // 3. Write to daily note
-  const notePath = appendSummary(result.topic, result.summary, cwd);
-  log(`wrote to ${notePath}`);
-
-  // 4. Index into SQLite
-  const id = randomUUID();
-  const date = new Date().toISOString().split("T")[0];
-
-  // Embed for vector search (best-effort)
-  const embedding = await embed(`${result.topic}\n${result.summary}`);
-  if (embedding) {
-    log(`embedded (${embedding.length} dims)`);
-  } else {
-    log("vector indexing skipped (Ollama unavailable)");
   }
 
   try {
-    indexSummary(id, session_id, date, cwd, result.topic, result.summary, embedding);
-    log("indexed in SQLite");
-  } catch (err) {
-    log(`error: indexing failed: ${err}`);
+    const result = await createSessionPipeline(config).process(input);
+    if (result) log(`wrote to ${result.path}`);
+    else log("skipping: session did not produce a summary");
+  } catch (error) {
+    log(`fatal: ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
   }
-
-  log("done");
 }
 
-main().catch((err) => {
-  log(`fatal: ${err}`);
-  process.exit(1);
-});
+await main();
