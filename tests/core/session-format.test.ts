@@ -21,9 +21,12 @@ describe("session format", () => {
   });
 
   it("renders Pi-style metadata", () => {
-    const text = renderSessionEntry({ runtime: "claude-code", sessionId: "s1", transcript: "x", cwd: `${process.env.HOME}/project` }, { topic: "Fix tests", summary: "Updated the tests." }, "10:30");
+    const text = renderSessionEntry({ runtime: "claude-code", sessionId: "s1", transcript: "x", cwd: `${process.env.HOME}/project`, startedAt: "2026-07-15T10:00:00.000Z", endedAt: "2026-07-15T10:30:00.000Z" }, { topic: "Fix tests", summary: "Updated the tests." }, "10:30");
     expect(text).toContain("### 10:30 — Fix tests");
     expect(text).toContain("**Runtime:** `claude-code`");
+    expect(text).toContain("**Started:** `2026-07-15T10:00:00.000Z`");
+    expect(text).toContain("**Ended:** `2026-07-15T10:30:00.000Z`");
+    expect(text).toContain("**Duration:** `30m`");
     expect(text).toContain("**CWD:** `~/project`");
   });
 });

@@ -6,6 +6,8 @@ export interface NormalizedSession {
   sessionId: string;
   transcript: string;
   cwd: string;
+  startedAt?: string;
+  endedAt?: string;
 }
 
 export interface SummaryResult {
@@ -29,6 +31,8 @@ export function validateNormalizedSession(value: unknown): NormalizedSession {
     sessionId: (input.sessionId as string).trim(),
     transcript: input.transcript as string,
     cwd: (input.cwd as string).trim(),
+    startedAt: typeof input.startedAt === "string" ? input.startedAt : undefined,
+    endedAt: typeof input.endedAt === "string" ? input.endedAt : undefined,
   };
 }
 
@@ -60,10 +64,28 @@ export function parseSummaryResponse(text: string): SummaryResult | null {
   return { topic, summary };
 }
 
+function formatTimestamp(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? value : date.toISOString();
+}
+
+function formatDuration(startedAt: string, endedAt: string): string | null {
+  const milliseconds = new Date(endedAt).getTime() - new Date(startedAt).getTime();
+  if (!Number.isFinite(milliseconds) || milliseconds < 0) return null;
+  const totalMinutes = Math.floor(milliseconds / 60_000);
+  if (totalMinutes < 1) return `${Math.floor(milliseconds / 1_000)}s`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
 export function renderSessionEntry(
   session: NormalizedSession,
   result: SummaryResult,
   time: string,
 ): string {
-  return `### ${time} — ${result.topic}\n\n${result.summary}\n\n**Runtime:** \`${session.runtime}\`\n**Session:** \`${session.sessionId}\`\n**CWD:** \`${shortenCwd(session.cwd)}\`\n`;
+  const timing = session.startedAt && session.endedAt
+    ? `\n**Started:** \`${formatTimestamp(session.startedAt)}\`\n**Ended:** \`${formatTimestamp(session.endedAt)}\`${formatDuration(session.startedAt, session.endedAt) ? `\n**Duration:** \`${formatDuration(session.startedAt, session.endedAt)}\`` : ""}`
+    : "";
+  return `### ${time} — ${result.topic}\n\n${result.summary}\n\n**Runtime:** \`${session.runtime}\`\n**Session:** \`${session.sessionId}\`${timing}\n**CWD:** \`${shortenCwd(session.cwd)}\`\n`;
 }

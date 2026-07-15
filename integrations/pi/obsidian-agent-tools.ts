@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
 
 interface ContentBlock { type: string; text?: string }
-interface SessionEntry { type: string; message?: { role?: string; content?: string | ContentBlock[] } }
+interface SessionEntry { type: string; timestamp?: string; message?: { role?: string; content?: string | ContentBlock[] } }
 
 function log(message: string): void {
   try {
@@ -40,7 +40,8 @@ export default function obsidianAgentTools(pi: ExtensionAPI): void {
       const reason = (event as { reason?: string }).reason;
       log(`shutdown reason=${reason}`);
       if (reason !== "quit") return;
-      const transcript = buildPiTranscript(ctx.sessionManager.getBranch() as SessionEntry[]);
+      const branch = ctx.sessionManager.getBranch() as SessionEntry[];
+      const transcript = buildPiTranscript(branch);
       if (!transcript) {
         log("skipping: session too short or branch had no user/assistant text");
         return;
@@ -53,6 +54,8 @@ export default function obsidianAgentTools(pi: ExtensionAPI): void {
         sessionId: basename(ctx.sessionManager.getSessionFile?.() || "unknown", ".jsonl"),
         transcript,
         cwd: ctx.cwd,
+        startedAt: branch.find((entry) => entry.timestamp)?.timestamp,
+        endedAt: new Date().toISOString(),
       }));
       const executable = process.env.OBSIDIAN_AGENT_SUMMARIZER || join(process.env.HOME || "/tmp", ".local", "bin", "obsidian-agent-summarize");
       const child = spawn(executable, [file], { detached: true, stdio: "ignore", env: { ...process.env } });

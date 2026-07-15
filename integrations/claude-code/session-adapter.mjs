@@ -10,9 +10,11 @@ const transcriptPath = input.transcript_path;
 if (!transcriptPath || !existsSync(transcriptPath)) process.exit(0);
 
 const turns = [];
+let startedAt;
 for (const line of readFileSync(transcriptPath, "utf8").split("\n")) {
   try {
     const entry = JSON.parse(line);
+    if (!startedAt && entry.timestamp) startedAt = entry.timestamp;
     if (entry.type !== "user" && entry.type !== "assistant") continue;
     const message = entry.message;
     if (!message) continue;
@@ -34,6 +36,8 @@ const normalized = {
   sessionId: input.session_id || "unknown",
   transcript: transcript.length > 50_000 ? `${transcript.slice(0, 50_000)}\n\n[...truncated]` : transcript,
   cwd: input.cwd || process.cwd(),
+  startedAt,
+  endedAt: new Date().toISOString(),
 };
 
 const directory = mkdtempSync(join(tmpdir(), "obsidian-agent-tools-"));
