@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { appendFileSync, writeFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { spawn } from "node:child_process";
@@ -50,7 +50,7 @@ export default function obsidianAgentTools(pi: ExtensionAPI): void {
       const file = join(directory, "session.json");
       writeFileSync(file, JSON.stringify({
         runtime: "pi",
-        sessionId: ctx.sessionManager.getSessionFile?.() || "unknown",
+        sessionId: basename(ctx.sessionManager.getSessionFile?.() || "unknown", ".jsonl"),
         transcript,
         cwd: ctx.cwd,
       }));
