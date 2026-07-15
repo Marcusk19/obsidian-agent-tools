@@ -13,7 +13,9 @@ Cross-harness tools for using an Obsidian vault from agent runtimes. The package
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `OBSIDIAN_VAULT` | `$HOME/obsidian-git-sync` | Absolute Obsidian vault path |
+| `OBSIDIAN_VAULT` | `$HOME/obsidian-git-sync` | Absolute Obsidian vault path used by the MCP server |
+| `OBSIDIAN_VAULT_NAME` | `obsidian-git-sync` | Registered Obsidian CLI vault name; required for unambiguous CLI operations |
+| `OBSIDIAN_VAULT_PATH` | `$OBSIDIAN_VAULT` | Optional filesystem path for CLI-local tooling; does not select the CLI vault |
 | `OBSIDIAN_DATA_DIR` | `$HOME/.local/share/obsidian-agent-tools` | SQLite database and summarizer logs |
 | `OBSIDIAN_CLI_PATH` | `/Applications/Obsidian.app/Contents/MacOS/obsidian` | Obsidian CLI binary |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | Local Ollama endpoint |
@@ -58,7 +60,7 @@ This repository also packages the autonomous `agent-memory` skill. It stores dur
 $OBSIDIAN_VAULT/3_Resource/agent memory/
 ```
 
-The skill prefers the `obsidian-agent-tools` MCP server when available. In Pi, where MCP is not used, it falls back to the Obsidian CLI through `Bash`. Set `OBSIDIAN_VAULT` and, when necessary, `OBSIDIAN_CLI_PATH` for the CLI fallback.
+The skill prefers the `obsidian-agent-tools` MCP server when available. In Pi, where MCP is not used, it falls back to the Obsidian CLI through `Bash`. Set `OBSIDIAN_VAULT_NAME` to the registered vault name for CLI operations; `OBSIDIAN_VAULT` is the filesystem path used by the MCP server. The skill passes `vault=...` explicitly and reads notes back after every write before reporting success.
 
 ### Install with Lola
 

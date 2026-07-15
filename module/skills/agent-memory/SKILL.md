@@ -158,8 +158,10 @@ connectivity.
 
 Prefer `mcp__obsidian__obsidian_write` for note creation or content updates and
 `mcp__obsidian__obsidian_property_write` for small lifecycle-property changes. When
-MCP is unavailable, use the Obsidian CLI fallback below. Never delete a memory
-automatically.
+MCP is unavailable, use the Obsidian CLI fallback below. After every create,
+append, or lifecycle update, read the target note back through the same backend and
+verify the expected title or stable content marker before reporting success. Never
+delete a memory automatically.
 
 When a memory becomes invalid:
 
@@ -171,33 +173,47 @@ When a memory becomes invalid:
 ## Obsidian CLI fallback
 
 Pi does not use MCP servers. When the Obsidian MCP tools are unavailable, use the
-Obsidian CLI through `Bash` for the same operations. Set paths once per operation:
+Obsidian CLI through `Bash` for the same operations.
+
+The CLI's `vault=` option requires the **registered vault name**. A filesystem path
+and `cd` do not select a vault, especially when multiple vaults are registered.
+Keep the vault name and path distinct:
 
 ```bash
 OBSIDIAN_CLI="${OBSIDIAN_CLI_PATH:-/Applications/Obsidian.app/Contents/MacOS/obsidian}"
-OBSIDIAN_VAULT="${OBSIDIAN_VAULT:-$HOME/obsidian-git-sync}"
-cd "$OBSIDIAN_VAULT"
+OBSIDIAN_VAULT_NAME="${OBSIDIAN_VAULT_NAME:-obsidian-git-sync}"
+OBSIDIAN_VAULT_PATH="${OBSIDIAN_VAULT_PATH:-${OBSIDIAN_VAULT:-$HOME/obsidian-git-sync}}"
 ```
 
-Use these CLI equivalents:
+`OBSIDIAN_VAULT_NAME` must match the name shown by `"$OBSIDIAN_CLI" vaults`.
+`OBSIDIAN_VAULT_PATH` is only the filesystem location and is not a substitute for
+`vault=`. Before memory operations, list registered vaults and fail clearly if
+`OBSIDIAN_VAULT_NAME` is not present. Never silently use the active vault.
 
-- Search: `"$OBSIDIAN_CLI" search query="..." path="3_Resource/agent memory/"`
-- Read: `"$OBSIDIAN_CLI" read path="3_Resource/agent memory/<file>.md"`
-- Backlinks: `"$OBSIDIAN_CLI" backlinks path="3_Resource/agent memory/<file>.md"`
-- Outgoing links: `"$OBSIDIAN_CLI" links path="3_Resource/agent memory/<file>.md"`
-- Create: `"$OBSIDIAN_CLI" create path="..." content="..." overwrite`
-- Append: `"$OBSIDIAN_CLI" append path="..." content="..."`
-- Lifecycle property: `"$OBSIDIAN_CLI" property:set path="..." name=status value=superseded`
+Every CLI operation must include `vault="$OBSIDIAN_VAULT_NAME"`:
+
+- Search: `"$OBSIDIAN_CLI" vault="$OBSIDIAN_VAULT_NAME" search query="..." path="3_Resource/agent memory/"`
+- Read: `"$OBSIDIAN_CLI" vault="$OBSIDIAN_VAULT_NAME" read path="3_Resource/agent memory/<file>.md"`
+- Backlinks: `"$OBSIDIAN_CLI" vault="$OBSIDIAN_VAULT_NAME" backlinks path="3_Resource/agent memory/<file>.md"`
+- Outgoing links: `"$OBSIDIAN_CLI" vault="$OBSIDIAN_VAULT_NAME" links path="3_Resource/agent memory/<file>.md"`
+- Create: `"$OBSIDIAN_CLI" vault="$OBSIDIAN_VAULT_NAME" create path="..." content="..." overwrite`
+- Append: `"$OBSIDIAN_CLI" vault="$OBSIDIAN_VAULT_NAME" append path="..." content="..."`
+- Lifecycle property: `"$OBSIDIAN_CLI" vault="$OBSIDIAN_VAULT_NAME" property:set path="..." name=status value=superseded`
 
 Quote paths and content safely. For multiline note creation or updates, use a
 shell variable or a short Python helper to pass one properly escaped `content=`
 argument to the CLI; do not bypass the CLI by writing directly to the vault.
-Verify the command succeeds before reporting a memory write. If the CLI itself is
-unavailable, continue the task and briefly report that the memory operation could
-not be completed.
+
+After every create, append, or `property:set`, read the exact target path back
+with the same explicit `vault=` selector. Confirm the read succeeds and contains
+the expected heading or a stable marker from the written content. Do not redirect
+CLI diagnostics to `/dev/null` before verification, and do not report success based
+only on process exit status. If verification fails, report the write as unverified
+or failed and include the CLI diagnostic.
 
 If an MCP call fails because the server is unavailable, retry the same operation
-through the CLI before giving up. Do not require the user to configure MCP in Pi.
+through this explicitly-selected CLI fallback before giving up. Do not require the
+user to configure MCP in Pi.
 
 ## Privacy and content boundaries
 
@@ -218,8 +234,9 @@ Do not interrupt work with an approval question.
 
 ## Failure handling
 
-If the preferred MCP operation is unavailable, use the Obsidian CLI fallback. If
-both MCP and CLI are unavailable, continue the task without inventing a successful
-write. Mention the unavailable memory operation briefly only if a memory should
-have been captured or retrieved. Never fall back to raw shell writes; the fallback
-must remain an Obsidian CLI operation.
+If the preferred MCP operation is unavailable, use the explicitly-selected
+Obsidian CLI fallback. If the configured vault name is not registered, the CLI is
+unavailable, or read-back verification fails, continue the task without inventing
+a successful write. Mention the unavailable or unverified memory operation briefly
+only if a memory should have been captured or retrieved. Never fall back to raw
+shell writes; the fallback must remain an Obsidian CLI operation.
