@@ -40,6 +40,18 @@ Use stable semantic filenames:
 Do not put dates in filenames. Dates belong in frontmatter so links remain stable
 when a memory is reinforced.
 
+Project and recurring-work memory has a separate namespace:
+
+```text
+3_Resource/agent memory/projects/
+```
+
+Use one stable Markdown file per long-running project or repeated workstream, named
+with a stable slug such as `obsidian-agent-tools.md`. These files are living
+summaries, not transcripts or daily logs. They may be created or updated during an
+explicit handover; ordinary always-on memory capture should not create project
+files unless the user explicitly requests that consolidation.
+
 ## Always-on behavior
 
 At the start of a task:
@@ -54,6 +66,12 @@ Do not load every memory at every session. Keep retrieval targeted and bounded. 
 not use `obsidian_session(seed)` as the primary memory lookup: it searches the
 whole vault and seeds from one top result. It may be used for broader topic context
 after memory search, not instead of it.
+
+When a task is explicitly being handed over, also search
+`3_Resource/agent memory/projects/` for the matching repository or workstream and
+read the relevant project file before consolidating it. For repository-backed work,
+use the repository name as the project key. For non-repository recurring work, use
+the explicitly named workstream; ask the user only when the target is ambiguous.
 
 ## When to capture a memory
 
@@ -141,7 +159,7 @@ State the task, repository, tool, or situation where this rule applies.
 
 Allowed values:
 
-- `type`: `correction`, `preference`, `recurring-problem`
+- `type`: `correction`, `preference`, `recurring-problem`, `project-memory`
 - `status`: `active`, `superseded`, `retired`, `needs-review`
 - `confidence`: `confirmed`, `provisional`
 - `scope`: `global`, `tool:<name>`, `repository:<name>`, `project:<name>`, or `topic:<name>`
@@ -153,6 +171,39 @@ Use meaningful wikilinks for topics, repositories, projects, source notes, relat
 memories, and replacements. Link to existing notes when possible. Unresolved links
 are acceptable; do not create placeholder topic notes solely to increase graph
 connectivity.
+
+## Project-memory format
+
+Project-memory files use this frontmatter and section structure:
+
+```markdown
+---
+type: project-memory
+status: active
+project: example-project
+repository: example/repository
+created: 2026-04-07
+last_updated: 2026-04-07
+tags:
+  - agent-memory
+  - agent-memory/project
+---
+# Example Project
+
+## Purpose
+## Durable context
+## Decisions
+## Conventions
+## Current state
+## Open questions
+## Next steps
+```
+
+The `repository` field is optional for non-repository workstreams. During handover,
+merge new durable facts into the living sections: preserve settled decisions and
+conventions, refresh current state and next steps, and remove resolved or stale
+items. Do not append the full handover transcript to the project file; the daily
+note remains the chronological record.
 
 ## Updating and lifecycle
 
