@@ -40,28 +40,43 @@ Use stable semantic filenames:
 Do not put dates in filenames. Dates belong in frontmatter so links remain stable
 when a memory is reinforced.
 
-Project and recurring-work memory has a separate namespace:
+Project and recurring-work knowledge belongs in the vault's root project area:
 
 ```text
-3_Resource/agent memory/projects/
+1_Projects/
 ```
 
-Use one stable Markdown file per long-running project or repeated workstream, named
-with a stable slug such as `obsidian-agent-tools.md`. These files are living
-summaries, not transcripts or daily logs. They may be created or updated during an
-explicit handover; ordinary always-on memory capture should not create project
-files unless the user explicitly requests that consolidation.
+Use the existing project or workstream note when one exists. Otherwise, create one
+stable Markdown file per long-running project or recurring workstream in
+`1_Projects/`, using a descriptive filename such as `obsidian-agent-tools.md`.
+These files are living summaries, not transcripts or daily logs. They may be
+created or updated during an explicit handover; ordinary always-on memory capture
+should not create project files unless the user explicitly requests that
+consolidation.
 
 ## Always-on behavior
 
 At the start of a task:
 
-1. Identify the relevant repository, project, tools, domain concepts, and user preferences.
-2. Search the vault semantically first with `obsidian_search_vault` when available. In Pi or another runtime without MCP, run `obsidian-agent-search vault <query>` with the explicitly configured vault and data directory.
-3. Prefer `confirmed` semantic results. If no confirmed result exists, retain `semantic` results as lower-confidence candidates. Then use targeted keyword search within the candidate paths to confirm exact terms; fall back to `mcp__obsidian__obsidian_search` or the Obsidian CLI only when semantic indexing/search is unavailable.
-4. Read the complete selected source note, prioritizing `confidence: confirmed` over `provisional`. Prefer `mcp__obsidian__obsidian_read`; otherwise use the CLI `read` command.
-5. Use `mcp__obsidian__obsidian_graph` or the CLI `backlinks`/`links` commands to inspect related context for high-relevance memories when useful.
-5. Apply memories only within their recorded scope. A repository-specific workaround must not become a global rule.
+1. Identify the relevant repository, project, tools, domain concepts, user preferences, and the likely note scopes.
+2. **Construct short, targeted search queries.** Use 1–3 key terms per query (e.g. `"acli jira"`, `"jira ADF"`), not long multi-keyword strings. The Obsidian CLI and vault search are not fuzzy — cramming 5+ terms into one query reduces matches rather than broadening them. If the first query misses, try a shorter or differently-angled query before escalating to the next tier.
+3. Start with **Tier 1: durable agent memory**. Search `3_Resource/agent memory/` semantically first with `obsidian_search_vault` when available. In Pi or another runtime without MCP, run `obsidian-agent-search vault <query>` with the explicitly configured vault and data directory. When the task clearly belongs to a repository or recurring workstream, also search the matching project note under `1_Projects/`.
+4. Prefer `confirmed` semantic results. If no confirmed result exists, retain `semantic` results as lower-confidence candidates. Then use targeted keyword search within the candidate paths to confirm exact terms; fall back to `mcp__obsidian__obsidian_search` or the Obsidian CLI only when semantic indexing/search is unavailable.
+5. Read the complete selected source note, prioritizing `confidence: confirmed` over `provisional`. Prefer `mcp__obsidian__obsidian_read`; otherwise use the CLI `read` command.
+6. If Tier 1 is empty, insufficient, stale, or leaves an important question unanswered, continue with **Tier 2: scoped project context**. Search the relevant repository's project notes, `CONTEXT.md`, ADRs, design notes, README files, and area notes. Use the task's repository, project, Jira key, component, or domain terms to bound this search.
+7. If the task concerns the user's personal history, current plans, a decision that may be recorded outside memory, or Tier 2 is insufficient or contradictory, continue with **Tier 3: broader vault context**. Search recent daily notes and then the wider vault using semantic plus exact/keyword search. Keep the result set bounded and prefer relevant, recent, non-archived notes.
+8. Use `mcp__obsidian__obsidian_graph` or the CLI `backlinks`/`links` commands to inspect related context for high-relevance notes when useful.
+9. Apply retrieved guidance only within its recorded scope. A repository-specific workaround must not become a global rule. Treat current, scoped project documentation as potentially newer factual context than an older memory, while preserving confirmed behavioral preferences unless explicitly superseded.
+
+### Tiered retrieval policy
+
+Memory-first is a prioritization rule, not an exclusive search boundary:
+
+- **Tier 1 — Durable guidance:** `3_Resource/agent memory/`. Use this for behavior, preferences, corrections, and reusable workarounds. Relevant project notes under `1_Projects/` are searched alongside or immediately after this tier when the task has a project scope.
+- **Tier 2 — Scoped knowledge:** the relevant project and area notes, repository documentation, ADRs, design notes, and other notes directly connected to the task. Use this for current project facts, decisions, terminology, and implementation context.
+- **Tier 3 — Broad context:** recent daily notes and the wider vault. Use this for personal history, current plans, unpromoted decisions, and recall when narrower tiers do not answer the question.
+
+Expand from one tier to the next when results are missing, ambiguous, contradictory, likely stale, or when the task explicitly asks about notes or history. Do not search or load the entire vault by default. Retrieval results locate candidate notes; read the complete relevant notes before relying on them. When sources conflict, consider scope and recency, prefer explicit current project decisions for project facts, and surface unresolved conflicts rather than silently choosing.
 
 Do not load every memory at every session. Keep retrieval targeted and bounded. Do
 not use `obsidian_session(seed)` as the primary memory lookup: it searches the
@@ -72,11 +87,11 @@ The semantic vault index is disposable derived state at
 `$OBSIDIAN_DATA_DIR/vault-index.db`. Markdown remains authoritative. If the index
 or Ollama is unavailable, continue with the targeted keyword fallback.
 
-When a task is explicitly being handed over, also search
-`3_Resource/agent memory/projects/` for the matching repository or workstream and
-read the relevant project file before consolidating it. For repository-backed work,
-use the repository name as the project key. For non-repository recurring work, use
-the explicitly named workstream; ask the user only when the target is ambiguous.
+When a task is explicitly being handed over, search `1_Projects/` for the
+matching repository or workstream note and read it before consolidating. For
+repository-backed work, use the repository name as the project key. For
+non-repository recurring work, use the explicitly named workstream; ask the user
+only when the target is ambiguous.
 
 ## When to capture a memory
 
