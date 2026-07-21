@@ -1,3 +1,5 @@
+import { fileURLToPath } from "node:url";
+import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import { searchVault } from "../search/vault-search.js";
 
@@ -62,7 +64,7 @@ export async function run(args: string[]): Promise<void> {
   ].join("\n")).join("\n\n---\n\n") + "\n");
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])) {
   run(process.argv.slice(2)).catch((error) => {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
