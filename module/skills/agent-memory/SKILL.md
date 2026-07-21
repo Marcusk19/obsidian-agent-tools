@@ -57,15 +57,20 @@ files unless the user explicitly requests that consolidation.
 At the start of a task:
 
 1. Identify the relevant repository, project, tools, domain concepts, and user preferences.
-2. Search `3_Resource/agent memory/` for active memories matching those concepts. Prefer `mcp__obsidian__obsidian_search` when available; otherwise use the Obsidian CLI fallback below.
-3. Read the most relevant results, prioritizing `confidence: confirmed` over `provisional`. Prefer `mcp__obsidian__obsidian_read`; otherwise use the CLI `read` command.
-4. Use `mcp__obsidian__obsidian_graph` or the CLI `backlinks`/`links` commands to inspect related context for high-relevance memories when useful.
+2. Search the vault semantically first with `obsidian_search_vault` when available. In Pi or another runtime without MCP, run `obsidian-agent-search vault <query>` with the explicitly configured vault and data directory.
+3. Prefer `confirmed` semantic results. If no confirmed result exists, retain `semantic` results as lower-confidence candidates. Then use targeted keyword search within the candidate paths to confirm exact terms; fall back to `mcp__obsidian__obsidian_search` or the Obsidian CLI only when semantic indexing/search is unavailable.
+4. Read the complete selected source note, prioritizing `confidence: confirmed` over `provisional`. Prefer `mcp__obsidian__obsidian_read`; otherwise use the CLI `read` command.
+5. Use `mcp__obsidian__obsidian_graph` or the CLI `backlinks`/`links` commands to inspect related context for high-relevance memories when useful.
 5. Apply memories only within their recorded scope. A repository-specific workaround must not become a global rule.
 
 Do not load every memory at every session. Keep retrieval targeted and bounded. Do
 not use `obsidian_session(seed)` as the primary memory lookup: it searches the
 whole vault and seeds from one top result. It may be used for broader topic context
-after memory search, not instead of it.
+after semantic/keyword memory search, not instead of it.
+
+The semantic vault index is disposable derived state at
+`$OBSIDIAN_DATA_DIR/vault-index.db`. Markdown remains authoritative. If the index
+or Ollama is unavailable, continue with the targeted keyword fallback.
 
 When a task is explicitly being handed over, also search
 `3_Resource/agent memory/projects/` for the matching repository or workstream and

@@ -16,11 +16,16 @@ if ! curl --silent --fail "${OLLAMA_HOST:-http://127.0.0.1:11434}/api/tags" >/de
   exit 2
 fi
 
-OBSIDIAN_VAULT="$VAULT" "$ROOT/bin/obsidian-agent-summarize" "$INPUT"
+mkdir -p "$VAULT/data"
+OBSIDIAN_VAULT="$VAULT" OBSIDIAN_DATA_DIR="$VAULT/data" "$ROOT/bin/obsidian-agent-summarize" "$INPUT"
 DATE="$(date +%Y-%m-%d)"
 OUTPUT="$VAULT/4_Archive/_agent_sessions/$DATE.md"
 test -s "$OUTPUT"
 grep -Fq '**Runtime:** `pi`' "$OUTPUT"
 grep -Fq '**Session:** `smoke-test`' "$OUTPUT"
 grep -Fq '**CWD:** `/tmp/obsidian-agent-tools`' "$OUTPUT"
+SEARCH_OUTPUT="$(OBSIDIAN_VAULT="$VAULT" OBSIDIAN_DATA_DIR="$VAULT/data" "$ROOT/bin/obsidian-agent-search" vault --rebuild "local smoke test")"
+printf '%s\n' "$SEARCH_OUTPUT"
+grep -Fq '4_Archive/_agent_sessions/' <<< "$SEARCH_OUTPUT"
+test -s "$VAULT/data/vault-index.db"
 echo "Smoke test passed: $OUTPUT"

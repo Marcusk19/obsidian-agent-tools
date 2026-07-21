@@ -133,7 +133,30 @@ Load `integrations/pi/obsidian-agent-tools.ts` as a Pi extension. Set `OBSIDIAN_
 
 ## Search
 
-Summaries are also indexed in SQLite under `OBSIDIAN_DATA_DIR`. Keyword and semantic search use the local Ollama embedding model when available; Markdown output is preserved even if indexing or embeddings fail.
+The vault is semantically indexed in a disposable SQLite database at:
+
+```text
+$OBSIDIAN_DATA_DIR/vault-index.db
+```
+
+The index covers every Markdown note, including generated session summaries. Markdown files remain the source of truth and the index is refreshed lazily when searching. The fixed Ollama model `nomic-embed-text` supplies 768-dimensional embeddings.
+
+Use the semantic-first routed search through MCP:
+
+```text
+obsidian_search_vault(query="explicit vault selector")
+```
+
+Or from Pi/non-MCP runtimes:
+
+```bash
+obsidian-agent-search vault "explicit vault selector"
+obsidian-agent-search vault --rebuild "explicit vault selector"
+```
+
+Routing performs semantic retrieval first, then targeted keyword confirmation. Confirmed results are preferred; semantic-only results are retained with lower confidence. If Ollama is unavailable, keyword search continues to work.
+
+The older `summaries.db` is a legacy session-summary index and is not used by the vault search path. New session summaries are indexed from their Markdown files during the next vault search.
 
 ## Migration from claude-obsidian
 

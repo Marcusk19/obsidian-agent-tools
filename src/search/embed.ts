@@ -1,5 +1,6 @@
 const OLLAMA_URL = (process.env.OLLAMA_HOST || "http://127.0.0.1:11434").replace(/\/$/, "");
-const MODEL = "nomic-embed-text";
+export const EMBEDDING_MODEL = "nomic-embed-text";
+export const EMBEDDING_DIM = 768;
 const MAX_RETRIES = 3;
 const TIMEOUT_MS = 30_000;
 
@@ -18,7 +19,7 @@ export async function embed(text: string): Promise<number[] | null> {
       const response = await fetch(`${OLLAMA_URL}/api/embed`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: MODEL, input: text }),
+        body: JSON.stringify({ model: EMBEDDING_MODEL, input: text }),
         signal: controller.signal,
       });
 

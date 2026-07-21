@@ -5,7 +5,8 @@
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "obsidian-agent-tools": "dist/index.js"
+    "obsidian-agent-tools": "dist/index.js",
+    "obsidian-agent-search": "bin/obsidian-agent-search"
   },
   "files": [
     "dist",

@@ -15,6 +15,7 @@ import { registerPropertyWriteTools } from "./tools/property-write.js";
 import { registerTaskUpdateTools } from "./tools/task-update.js";
 import { registerSessionTools } from "./tools/session.js";
 import { registerSearchSessionsTools } from "./tools/search-sessions.js";
+import { registerVaultSearchTools } from "./tools/search-vault.js";
 
 const server = new McpServer({
   name: "obsidian",
@@ -35,6 +36,7 @@ registerPropertyWriteTools(server);
 registerTaskUpdateTools(server);
 registerSessionTools(server);
 registerSearchSessionsTools(server);
+registerVaultSearchTools(server);
 
 const transport = new StdioServerTransport();
 await server.connect(transport);
