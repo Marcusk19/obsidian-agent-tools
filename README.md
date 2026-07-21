@@ -141,6 +141,46 @@ $OBSIDIAN_DATA_DIR/vault-index.db
 
 The index covers every Markdown note, including generated session summaries. Markdown files remain the source of truth and the index is refreshed lazily when searching. The fixed Ollama model `nomic-embed-text` supplies 768-dimensional embeddings.
 
+### Set up the vault index
+
+The index database is local derived state. It is created automatically on the first routed search and is not stored in the vault or synchronized through Git.
+
+From a checkout of this repository:
+
+```bash
+cd /absolute/path/to/obsidian-agent-tools
+pnpm install
+pnpm build
+pnpm add --global /absolute/path/to/obsidian-agent-tools
+```
+
+Install the embedding model in Ollama:
+
+```bash
+ollama pull nomic-embed-text
+```
+
+Set the vault and data directory when using the CLI:
+
+```bash
+export OBSIDIAN_VAULT="$HOME/obsidian-git-sync"
+export OBSIDIAN_DATA_DIR="$HOME/.local/share/obsidian-agent-tools"
+```
+
+Build the initial index with a semantic search:
+
+```bash
+obsidian-agent-search vault "search your notes"
+```
+
+To discard and recreate the derived index from the current Markdown files:
+
+```bash
+obsidian-agent-search vault --rebuild "search your notes"
+```
+
+The rebuild scans all Markdown files, including `4_Archive/_agent_sessions/`. It does not migrate or modify the legacy `summaries.db`. If Ollama is unavailable, keyword indexing and search still work, but semantic results are unavailable until embeddings can be generated.
+
 Use the semantic-first routed search through MCP:
 
 ```text
