@@ -21,6 +21,13 @@ Cross-harness tools for using an Obsidian vault from agent runtimes. The package
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | Local Ollama endpoint |
 | `OBSIDIAN_SUMMARY_MODEL` | `qwen2.5:7b` | Local model used for session summaries |
 | `OBSIDIAN_AGENT_SUMMARIZER` | repository launcher | Override the shared summarizer executable |
+| `OBSIDIAN_MEMORY_ENABLED` | enabled | Set to `0` to disable automatic memory-context injection |
+| `OBSIDIAN_MEMORY_TIMEOUT_MS` | `5000` | Maximum time Pi and Claude hooks wait for memory retrieval |
+| `OBSIDIAN_MEMORY_MAX_CHARS` | `2000` | Rendered-character budget for injected memory context |
+| `OBSIDIAN_MEMORY_MAX_RESULTS` | `1` | Maximum confirmed durable-memory candidate |
+| `OBSIDIAN_MEMORY_PROJECT_RESULTS` | `1` | Maximum current-project candidate |
+| `OBSIDIAN_MEMORY_BROAD_RESULTS` | `0` | Broad-vault candidates; set above zero to opt in for explicit recall prompts |
+| `OBSIDIAN_AGENT_CONTEXT` | `$HOME/.local/bin/obsidian-agent-context` | Shared retrieval executable used by Pi and Claude hooks |
 
 Session summaries are generated locally. Transcripts are not sent to Vertex AI or another remote provider.
 
@@ -76,9 +83,12 @@ lola install obsidian-agent-tools \\
   --append-context module/AGENTS.md
 ```
 
-The module contains the skill at `module/skills/agent-memory/SKILL.md` and the
-always-on instructions at `module/AGENTS.md`. `--append-context` installs the
-module instructions without replacing the rest of the assistant's global context.
+The module contains a short dispatcher at
+`module/skills/agent-memory/SKILL.md`, operation-specific instructions under its
+`references/` directory, and always-on instructions at `module/AGENTS.md`.
+Detailed capture, lifecycle, formatting, and CLI guidance is loaded only when
+needed. `--append-context` installs the module instructions without replacing the
+rest of the assistant's global context.
 If the module was previously registered, update it before reinstalling:
 
 ```bash
@@ -93,11 +103,66 @@ manually after cloning the repository:
 
 ```bash
 mkdir -p ~/.agents/skills/agent-memory
-cp module/skills/agent-memory/SKILL.md ~/.agents/skills/agent-memory/SKILL.md
+cp -R module/skills/agent-memory/. ~/.agents/skills/agent-memory/
 ```
 
 Pi will use the CLI fallback documented in the skill because no MCP server is
 required.
+
+## Automatic memory context
+
+`obsidian-agent-context` is the single hot-path interface for memory retrieval
+before each agent turn. It uses the local lexical index without waiting for
+Ollama or semantic embeddings, searches active scope-matching durable memory
+first, optionally checks only the project identified by `cwd`/repository
+metadata, and does not search broad vault context by default. Broad search requires both an
+explicit recall prompt and `OBSIDIAN_MEMORY_BROAD_RESULTS` above zero.
+
+The command injects at most one confirmed durable rule and one scoped project
+excerpt by default. Durable excerpts prefer `## Rule` plus a short `## Applies
+when` summary, always include the source path, and omit internal ranking metadata.
+Output stays under `OBSIDIAN_MEMORY_MAX_CHARS` (default 2,000 UTF-8 characters).
+A miss returns an empty string.
+
+```
+obsidian-agent-context [--cwd PATH] [--repository NAME] [--project NAME] <prompt>
+```
+
+Automatic injection satisfies routine start-of-task memory retrieval; agents
+should not load the full skill or repeat the search on every turn. The compact
+rule excerpt is enough for low-risk guidance. Open the canonical source note only
+when exact commands, exceptions, conflicts, rationale, or consequential actions
+depend on it, or when explicit history/notes retrieval requires escalation.
+Retrieval errors never block the prompt. Hooks wait up to five seconds by default;
+set `OBSIDIAN_MEMORY_TIMEOUT_MS` to tune that limit. Deeper manual searches still
+use semantic retrieval when available. Set
+`OBSIDIAN_MEMORY_ENABLED=0` to opt out without removing the installed hooks.
+
+### Pi
+
+`integrations/pi/obsidian-agent-tools.ts` now invokes `obsidian-agent-context`
+before each agent turn. The extension passes the turn prompt and Pi’s current
+working directory to the shared executable and injects the rendered Markdown as
+an invisible `customType: "obsidian-memory"` message. Override the executable
+path with `OBSIDIAN_AGENT_CONTEXT` if the command is installed somewhere other
+than `$HOME/.local/bin/obsidian-agent-context`.
+
+### Claude Code
+
+Install `integrations/claude-code/on-user-prompt-submit` as Claude Code’s
+`on_user_prompt_submit` hook alongside the existing `on-session-end` and
+`on-post-compact` hooks:
+
+```
+ln -sf /path/to/obsidian-agent-tools/integrations/claude-code/on-user-prompt-submit \
+  "$HOME/Library/Application Support/Claude/hooks/on-user-prompt-submit"
+```
+
+The hook reads Claude’s JSON payload from stdin, launches
+`obsidian-agent-context` with the prompt and `cwd`, and writes a JSON response
+that preserves the original prompt plus a `system_context` field when results are
+available. Claude only sees the injected Markdown; the hook does not store
+prompts, retrieved context, or secrets in the vault.
 
 ## Shared session summaries
 
@@ -123,7 +188,7 @@ The session summary is a concise plain-prose handoff.
 
 ### Claude Code
 
-Configure the SessionEnd hook to invoke `integrations/claude-code/on-session-end`. The hook reads Claude's hook JSON, normalizes the transcript, and launches the shared summarizer without blocking shutdown. The PostCompact hook is available at `integrations/claude-code/on-post-compact`.
+Configure the SessionEnd hook to invoke `integrations/claude-code/on-session-end`. The hook reads Claude's hook JSON, normalizes the transcript, and launches the shared summarizer without blocking shutdown. The PostCompact hook is available at `integrations/claude-code/on-post-compact`, and `integrations/claude-code/on-user-prompt-submit` injects automatic memory context on `on_user_prompt_submit` before Claude runs the prompt.
 
 Set `OBSIDIAN_AGENT_SUMMARIZER` to the absolute path of `bin/obsidian-agent-summarize` when the hook is installed outside this checkout.
 

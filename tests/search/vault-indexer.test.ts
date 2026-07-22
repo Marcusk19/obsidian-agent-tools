@@ -66,6 +66,22 @@ describe("vault indexer", () => {
     expect(db.prepare("SELECT path FROM vault_note_fts WHERE vault_note_fts MATCH ?").get('"selector"')).toMatchObject({ path: "memory.md" });
   });
 
+  it("defers embeddings during keyword-only sync and adds them on semantic sync", async () => {
+    const { vaultPath } = setup();
+    writeFileSync(join(vaultPath, "memory.md"), "fast lexical memory");
+    const embed = vi.fn().mockResolvedValue(vectors());
+
+    await syncVaultIndex({ vaultPath, db, embed, keywordOnly: true });
+    expect(embed).not.toHaveBeenCalled();
+    expect(db.prepare("SELECT embedding_status FROM vault_notes WHERE path = ?").get("memory.md"))
+      .toMatchObject({ embedding_status: "skipped" });
+
+    await syncVaultIndex({ vaultPath, db, embed });
+    expect(embed).toHaveBeenCalledOnce();
+    expect(db.prepare("SELECT embedding_status FROM vault_notes WHERE path = ?").get("memory.md"))
+      .toMatchObject({ embedding_status: "ready" });
+  });
+
   it("indexes generated session summaries", async () => {
     const { vaultPath } = setup();
     mkdirSync(join(vaultPath, "4_Archive", "_agent_sessions"), { recursive: true });

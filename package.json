@@ -6,7 +6,8 @@
   "main": "dist/index.js",
   "bin": {
     "obsidian-agent-tools": "dist/index.js",
-    "obsidian-agent-search": "bin/obsidian-agent-search"
+    "obsidian-agent-search": "bin/obsidian-agent-search",
+    "obsidian-agent-context": "bin/obsidian-agent-context"
   },
   "files": [
     "dist",

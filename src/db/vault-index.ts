@@ -15,7 +15,7 @@ export interface VaultNoteRecord {
   content: string;
   contentHash: string;
   mtimeMs: number;
-  embeddingStatus: "pending" | "ready" | "failed";
+  embeddingStatus: "pending" | "ready" | "failed" | "skipped";
   lastEmbeddingError: string | null;
   lastEmbeddingAttempt: string | null;
 }

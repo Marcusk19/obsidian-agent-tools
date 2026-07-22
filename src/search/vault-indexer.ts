@@ -19,6 +19,7 @@ export interface SyncVaultOptions {
   db: VaultIndexDatabase;
   embed?: typeof defaultEmbed;
   force?: boolean;
+  keywordOnly?: boolean;
 }
 
 interface FileEntry {
@@ -89,10 +90,12 @@ async function indexEntry(
   entry: FileEntry,
   makeEmbedding: typeof defaultEmbed,
   force: boolean,
+  keywordOnly: boolean,
   report: SyncReport,
 ): Promise<void> {
   const previous = previousNote(db, entry.path);
-  if (!force && previous?.content_hash === entry.contentHash && previous.mtime_ms === entry.mtimeMs) {
+  const contentUnchanged = previous?.content_hash === entry.contentHash && previous.mtime_ms === entry.mtimeMs;
+  if (!force && contentUnchanged && (keywordOnly || previous?.embedding_status !== "skipped")) {
     report.unchanged++;
     return;
   }
@@ -106,6 +109,14 @@ async function indexEntry(
     VALUES (?, ?, ?, ?, ?, 'pending', NULL, ?)
   `).run(entry.path, entry.title, entry.content, entry.contentHash, entry.mtimeMs, attempt);
   db.prepare("INSERT INTO vault_note_fts (content, title, path) VALUES (?, ?, ?)").run(entry.content, entry.title, entry.path);
+
+  if (keywordOnly) {
+    db.prepare("UPDATE vault_notes SET embedding_status = 'skipped' WHERE path = ?").run(entry.path);
+    report.keywordOnly++;
+    if (isUpdate) report.updated++;
+    else report.added++;
+    return;
+  }
 
   let vector: number[] | null = null;
   let errorMessage: string | null = null;
@@ -143,7 +154,14 @@ export async function syncVaultIndex(options: SyncVaultOptions): Promise<SyncRep
   for (const path of paths) {
     report.scanned++;
     try {
-      await indexEntry(options.db, readEntry(options.vaultPath, path), makeEmbedding, options.force === true, report);
+      await indexEntry(
+        options.db,
+        readEntry(options.vaultPath, path),
+        makeEmbedding,
+        options.force === true,
+        options.keywordOnly === true,
+        report,
+      );
     } catch (error) {
       report.failed++;
       console.error(`vault index: failed to read/index ${path}: ${error instanceof Error ? error.message : String(error)}`);

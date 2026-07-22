@@ -1,11 +1,9 @@
 ---
 name: agent-memory
 description: >-
-  Maintain durable, reusable agent memories in the user's Obsidian vault. Use
-  automatically on every task to retrieve relevant guidance and to capture
-  explicit corrections, confirmed preferences, and reusable failures without
-  approval prompts. Use for agent memory, corrections, recurring problems, and
-  learned workarounds.
+  Maintain durable, reusable agent memories in the user's Obsidian vault. The
+  automatic pre-turn context hook satisfies routine retrieval; load this skill
+  for deeper retrieval, exact source reads, or memory capture and maintenance.
 user-invocable: false
 allowed-tools:
   - Bash
@@ -20,294 +18,32 @@ allowed-tools:
 
 # Agent Memory
 
-Maintain a small, trustworthy store of durable guidance in the Obsidian vault.
-This is not a transcript, task log, project note, or scratchpad.
-
-## Memory location
-
-Store memories as individual Markdown files under:
-
-```text
-3_Resource/agent memory/
-```
-
-Use stable semantic filenames:
-
-- `Correction - <short rule>.md`
-- `Preference - <short preference>.md`
-- `Recurring problem - <short problem>.md`
-
-Do not put dates in filenames. Dates belong in frontmatter so links remain stable
-when a memory is reinforced.
-
-Project and recurring-work knowledge belongs in the vault's root project area:
-
-```text
-1_Projects/
-```
-
-Use the existing project or workstream note when one exists. Otherwise, create one
-stable Markdown file per long-running project or recurring workstream in
-`1_Projects/`, using a descriptive filename such as `obsidian-agent-tools.md`.
-These files are living summaries, not transcripts or daily logs. They may be
-created or updated during an explicit handover; ordinary always-on memory capture
-should not create project files unless the user explicitly requests that
-consolidation.
-
-## Always-on behavior
-
-At the start of a task:
-
-1. Identify the relevant repository, project, tools, domain concepts, user preferences, and the likely note scopes.
-2. **Construct short, targeted search queries.** Use 1–3 key terms per query (e.g. `"acli jira"`, `"jira ADF"`), not long multi-keyword strings. The Obsidian CLI and vault search are not fuzzy — cramming 5+ terms into one query reduces matches rather than broadening them. If the first query misses, try a shorter or differently-angled query before escalating to the next tier.
-3. Start with **Tier 1: durable agent memory**. Search `3_Resource/agent memory/` semantically first with `obsidian_search_vault` when available. In Pi or another runtime without MCP, run `obsidian-agent-search vault <query>` with the explicitly configured vault and data directory. When the task clearly belongs to a repository or recurring workstream, also search the matching project note under `1_Projects/`.
-4. Prefer `confirmed` semantic results. If no confirmed result exists, retain `semantic` results as lower-confidence candidates. Then use targeted keyword search within the candidate paths to confirm exact terms; fall back to `mcp__obsidian__obsidian_search` or the Obsidian CLI only when semantic indexing/search is unavailable.
-5. Read the complete selected source note, prioritizing `confidence: confirmed` over `provisional`. Prefer `mcp__obsidian__obsidian_read`; otherwise use the CLI `read` command.
-6. If Tier 1 is empty, insufficient, stale, or leaves an important question unanswered, continue with **Tier 2: scoped project context**. Search the relevant repository's project notes, `CONTEXT.md`, ADRs, design notes, README files, and area notes. Use the task's repository, project, Jira key, component, or domain terms to bound this search.
-7. If the task concerns the user's personal history, current plans, a decision that may be recorded outside memory, or Tier 2 is insufficient or contradictory, continue with **Tier 3: broader vault context**. Search recent daily notes and then the wider vault using semantic plus exact/keyword search. Keep the result set bounded and prefer relevant, recent, non-archived notes.
-8. Use `mcp__obsidian__obsidian_graph` or the CLI `backlinks`/`links` commands to inspect related context for high-relevance notes when useful.
-9. Apply retrieved guidance only within its recorded scope. A repository-specific workaround must not become a global rule. Treat current, scoped project documentation as potentially newer factual context than an older memory, while preserving confirmed behavioral preferences unless explicitly superseded.
-
-### Tiered retrieval policy
-
-Memory-first is a prioritization rule, not an exclusive search boundary:
-
-- **Tier 1 — Durable guidance:** `3_Resource/agent memory/`. Use this for behavior, preferences, corrections, and reusable workarounds. Relevant project notes under `1_Projects/` are searched alongside or immediately after this tier when the task has a project scope.
-- **Tier 2 — Scoped knowledge:** the relevant project and area notes, repository documentation, ADRs, design notes, and other notes directly connected to the task. Use this for current project facts, decisions, terminology, and implementation context.
-- **Tier 3 — Broad context:** recent daily notes and the wider vault. Use this for personal history, current plans, unpromoted decisions, and recall when narrower tiers do not answer the question.
-
-Expand from one tier to the next when results are missing, ambiguous, contradictory, likely stale, or when the task explicitly asks about notes or history. Do not search or load the entire vault by default. Retrieval results locate candidate notes; read the complete relevant notes before relying on them. When sources conflict, consider scope and recency, prefer explicit current project decisions for project facts, and surface unresolved conflicts rather than silently choosing.
-
-Do not load every memory at every session. Keep retrieval targeted and bounded. Do
-not use `obsidian_session(seed)` as the primary memory lookup: it searches the
-whole vault and seeds from one top result. It may be used for broader topic context
-after semantic/keyword memory search, not instead of it.
-
-The semantic vault index is disposable derived state at
-`$OBSIDIAN_DATA_DIR/vault-index.db`. Markdown remains authoritative. If the index
-or Ollama is unavailable, continue with the targeted keyword fallback.
-
-When a task is explicitly being handed over, search `1_Projects/` for the
-matching repository or workstream note and read it before consolidating. For
-repository-backed work, use the repository name as the project key. For
-non-repository recurring work, use the explicitly named workstream; ask the user
-only when the target is ambiguous.
-
-## When to capture a memory
-
-Capture memories autonomously. Do not ask the user to invoke a memory command and
-do not ask for approval before writing.
-
-### Confirmed corrections
-
-Create or update a `type: correction` memory immediately when the user clearly
-provides a replacement rule, for example:
-
-- "That's wrong; the correct command is ..."
-- "Don't use X here; use Y."
-- "In this repository, the convention is ..."
-
-A clear correction is `confidence: confirmed`. Ordinary disagreement, tentative
-language, brainstorming, or the agent changing its own plan is not a correction.
-
-### Preferences
-
-Create a `type: preference` memory when the user explicitly states a durable
-preference. Do not infer a personal preference from a single choice unless it is
-clearly intended as a reusable rule.
-
-### Reusable failures
-
-Create a `type: recurring-problem` memory when a failure reveals a behavior-changing
-rule that is likely to recur. A strong single-incident lesson may be written as
-`confidence: provisional`. Promote it to `confirmed` when it recurs, a workaround
-is successfully validated, repository documentation confirms it, or the user
-confirms the explanation.
-
-Ignore incidental failures such as transient network errors, typos, or isolated
-non-zero exits that do not reveal a reusable constraint.
-
-## Search before writing
-
-Before creating a memory:
-
-1. Search the memory folder for the proposed rule, its key terms, the tool or repository, and likely synonyms.
-2. Read close matches and inspect their status, scope, and confidence.
-3. Update an existing memory when it expresses the same rule.
-4. If new evidence contradicts an active memory, do not leave competing active rules. Update the old memory when it is clearly the same concept, or mark it `status: superseded` and create a linked replacement when the distinction matters.
-5. Update `last_confirmed` when confirmed evidence reinforces an existing memory.
-
-## Memory format
-
-Every memory should use this shape:
-
-```markdown
----
-type: correction
-status: active
-confidence: confirmed
-scope:
-  - repository: example/repository
-topics:
-  - "[[Example topic]]"
-tags:
-  - agent-memory
-  - agent-memory/correction
-created: 2026-04-07
-last_confirmed: 2026-04-07
-source: "[[Source note]]"
----
-# Use the repository's documented test command
-
-## Rule
-
-State the reusable guidance directly and unambiguously.
-
-## Why
-
-Explain the evidence or consequence briefly.
-
-## Evidence
-
-Describe the correction, failure, validation, or documentation that supports it.
-Do not copy a whole transcript.
-
-## Applies when
-
-State the task, repository, tool, or situation where this rule applies.
-```
-
-Allowed values:
-
-- `type`: `correction`, `preference`, `recurring-problem`, `project-memory`
-- `status`: `active`, `superseded`, `retired`, `needs-review`
-- `confidence`: `confirmed`, `provisional`
-- `scope`: `global`, `tool:<name>`, `repository:<name>`, `project:<name>`, or `topic:<name>`
-
-Use the narrowest scope supported by the evidence. A local lesson can later be
-promoted only after evidence shows it applies more broadly.
-
-Use meaningful wikilinks for topics, repositories, projects, source notes, related
-memories, and replacements. Link to existing notes when possible. Unresolved links
-are acceptable; do not create placeholder topic notes solely to increase graph
-connectivity.
-
-## Project-memory format
-
-Project-memory files use this frontmatter and section structure:
-
-```markdown
----
-type: project-memory
-status: active
-project: example-project
-repository: example/repository
-created: 2026-04-07
-last_updated: 2026-04-07
-tags:
-  - agent-memory
-  - agent-memory/project
----
-# Example Project
-
-## Purpose
-## Durable context
-## Decisions
-## Conventions
-## Current state
-## Open questions
-## Next steps
-```
-
-The `repository` field is optional for non-repository workstreams. During handover,
-merge new durable facts into the living sections: preserve settled decisions and
-conventions, refresh current state and next steps, and remove resolved or stale
-items. Do not append the full handover transcript to the project file; the daily
-note remains the chronological record.
-
-## Updating and lifecycle
-
-Prefer `mcp__obsidian__obsidian_write` for note creation or content updates and
-`mcp__obsidian__obsidian_property_write` for small lifecycle-property changes. When
-MCP is unavailable, use the Obsidian CLI fallback below. After every create,
-append, or lifecycle update, read the target note back through the same backend and
-verify the expected title or stable content marker before reporting success. Never
-delete a memory automatically.
-
-When a memory becomes invalid:
-
-- mark it `superseded` and link the replacement when newer guidance replaces it;
-- mark it `needs-review` when its validity is uncertain, such as after a tool or repository version change;
-- mark it `retired` when it is no longer useful but worth preserving historically;
-- exclude inactive memories from normal guidance, while retaining them for provenance.
-
-## Obsidian CLI fallback
-
-Pi does not use MCP servers. When the Obsidian MCP tools are unavailable, use the
-Obsidian CLI through `Bash` for the same operations.
-
-The CLI's `vault=` option requires the **registered vault name**. A filesystem path
-and `cd` do not select a vault, especially when multiple vaults are registered.
-Keep the vault name and path distinct:
-
-```bash
-OBSIDIAN_CLI="${OBSIDIAN_CLI_PATH:-/Applications/Obsidian.app/Contents/MacOS/obsidian}"
-OBSIDIAN_VAULT_NAME="${OBSIDIAN_VAULT_NAME:-obsidian-git-sync}"
-OBSIDIAN_VAULT_PATH="${OBSIDIAN_VAULT_PATH:-${OBSIDIAN_VAULT:-$HOME/obsidian-git-sync}}"
-```
-
-`OBSIDIAN_VAULT_NAME` must match the name shown by `"$OBSIDIAN_CLI" vaults`.
-`OBSIDIAN_VAULT_PATH` is only the filesystem location and is not a substitute for
-`vault=`. Before memory operations, list registered vaults and fail clearly if
-`OBSIDIAN_VAULT_NAME` is not present. Never silently use the active vault.
-
-Every CLI operation must include `vault="$OBSIDIAN_VAULT_NAME"`:
-
-- Search: `"$OBSIDIAN_CLI" vault="$OBSIDIAN_VAULT_NAME" search query="..." path="3_Resource/agent memory/"`
-- Read: `"$OBSIDIAN_CLI" vault="$OBSIDIAN_VAULT_NAME" read path="3_Resource/agent memory/<file>.md"`
-- Backlinks: `"$OBSIDIAN_CLI" vault="$OBSIDIAN_VAULT_NAME" backlinks path="3_Resource/agent memory/<file>.md"`
-- Outgoing links: `"$OBSIDIAN_CLI" vault="$OBSIDIAN_VAULT_NAME" links path="3_Resource/agent memory/<file>.md"`
-- Create: `"$OBSIDIAN_CLI" vault="$OBSIDIAN_VAULT_NAME" create path="..." content="..." overwrite`
-- Append: `"$OBSIDIAN_CLI" vault="$OBSIDIAN_VAULT_NAME" append path="..." content="..."`
-- Lifecycle property: `"$OBSIDIAN_CLI" vault="$OBSIDIAN_VAULT_NAME" property:set path="..." name=status value=superseded`
-
-Quote paths and content safely. For multiline note creation or updates, use a
-shell variable or a short Python helper to pass one properly escaped `content=`
-argument to the CLI; do not bypass the CLI by writing directly to the vault.
-
-After every create, append, or `property:set`, read the exact target path back
-with the same explicit `vault=` selector. Confirm the read succeeds and contains
-the expected heading or a stable marker from the written content. Do not redirect
-CLI diagnostics to `/dev/null` before verification, and do not report success based
-only on process exit status. If verification fails, report the write as unverified
-or failed and include the CLI diagnostic.
-
-If an MCP call fails because the server is unavailable, retry the same operation
-through this explicitly-selected CLI fallback before giving up. Do not require the
-user to configure MCP in Pi.
-
-## Privacy and content boundaries
-
-Never store passwords, API keys, access tokens, private keys, session cookies, or
-other credentials. Redact secrets from error output. Do not copy sensitive personal
-or confidential third-party information. Prefer a generalized reusable rule and a
-link to the source note over copied transcript content.
-
-## User visibility
-
-Memory retrieval should normally be invisible. After creating or materially updating
-a memory, include a concise note in the ordinary response, for example:
-
-> Captured reusable guidance in `[[Correction - ...]]`.
-
-Do not show every search result, confidence calculation, or routine memory read.
-Do not interrupt work with an approval question.
-
-## Failure handling
-
-If the preferred MCP operation is unavailable, use the explicitly-selected
-Obsidian CLI fallback. If the configured vault name is not registered, the CLI is
-unavailable, or read-back verification fails, continue the task without inventing
-a successful write. Mention the unavailable or unverified memory operation briefly
-only if a memory should have been captured or retrieved. Never fall back to raw
-shell writes; the fallback must remain an Obsidian CLI operation.
+Keep durable guidance small, scoped, trustworthy, and stored as canonical
+Markdown in the Obsidian vault. Memory is not a transcript, task log, project
+note, or scratchpad.
+
+## Hot path
+
+Automatic pre-turn memory injection satisfies routine start-of-task retrieval.
+Do not repeat that search merely because this skill is available.
+
+- Apply injected guidance only within its recorded scope.
+- A compact `## Rule` excerpt is sufficient for low-risk behavioral guidance.
+- Read the complete source when exact commands, exceptions, conflicts, rationale,
+  or a consequential action depends on it.
+- Perform deeper retrieval only when injected context is absent or insufficient,
+  or when the user asks about history, notes, plans, or prior decisions.
+- Capture explicit corrections, durable preferences, and reusable failures
+  autonomously; do not ask for approval.
+- Never store credentials, secrets, sensitive personal data, or raw transcripts.
+
+## Load detailed instructions only when needed
+
+- Deeper/manual retrieval: [references/retrieval.md](references/retrieval.md)
+- Capture criteria and duplicate handling: [references/capture.md](references/capture.md)
+- Memory and project-memory formats: [references/formats.md](references/formats.md)
+- Writes, lifecycle, and verification: [references/lifecycle.md](references/lifecycle.md)
+- Pi/CLI fallback commands: [references/obsidian-cli.md](references/obsidian-cli.md)
+
+After creating or materially updating a memory, mention its wikilink briefly in
+the ordinary response. Routine retrieval remains invisible.
