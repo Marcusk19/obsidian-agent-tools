@@ -2,8 +2,13 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, unlinkSync } from "node:
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { closeVaultIndex, openVaultIndex, type VaultIndexDatabase } from "../../src/db/vault-index.js";
-import { syncVaultIndex } from "../../src/search/vault-indexer.js";
+import {
+  closeVaultIndex,
+  openVaultIndex,
+  VAULT_INDEX_FINGERPRINT,
+  type VaultIndexDatabase,
+} from "../../src/db/vault-index.js";
+import { chunkMarkdown, syncVaultIndex } from "../../src/search/vault-indexer.js";
 
 const vectors = () => Array(768).fill(0.1);
 
@@ -63,7 +68,7 @@ describe("vault indexer", () => {
 
     expect(embed).toHaveBeenCalledOnce();
     expect(db.prepare("SELECT embedding_status FROM vault_notes WHERE path = ?").get("memory.md")).toMatchObject({ embedding_status: "failed" });
-    expect(db.prepare("SELECT path FROM vault_note_fts WHERE vault_note_fts MATCH ?").get('"selector"')).toMatchObject({ path: "memory.md" });
+    expect(db.prepare("SELECT path FROM vault_chunk_fts WHERE vault_chunk_fts MATCH ?").get('"selector"')).toMatchObject({ path: "memory.md" });
   });
 
   it("defers embeddings during keyword-only sync and adds them on semantic sync", async () => {
@@ -82,6 +87,31 @@ describe("vault indexer", () => {
       .toMatchObject({ embedding_status: "ready" });
   });
 
+  it("chunks Markdown on headings and overlaps oversized sections", () => {
+    const longSection = Array.from({ length: 12 }, (_, index) => `line-${index} ${"word ".repeat(45)}`).join("\n");
+    const chunks = chunkMarkdown("note.md", `---\nstatus: active\n---\n# Root\n\n## Details\n${longSection}`);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((chunk) => chunk.heading.includes("Root"))).toBe(true);
+    const detailChunks = chunks.filter((chunk) => chunk.heading === "Root › Details");
+    expect(detailChunks.length).toBeGreaterThan(1);
+    expect(detailChunks[1].startLine).toBeLessThanOrEqual(detailChunks[0].endLine);
+    expect(chunks[0].content).not.toContain("status: active");
+  });
+
+  it("invalidates derived rows when the index fingerprint changes", () => {
+    const { dataDir } = setup();
+    db.prepare("INSERT INTO vault_notes (path, title, content, content_hash, mtime_ms, embedding_status) VALUES ('old.md', 'Old', 'old', 'hash', 1, 'ready')").run();
+    db.prepare("UPDATE vault_index_meta SET value = 'outdated' WHERE key = 'index_fingerprint'").run();
+    closeVaultIndex(db);
+
+    db = openVaultIndex(dataDir);
+
+    expect(db.prepare("SELECT 1 FROM vault_notes WHERE path = 'old.md'").get()).toBeUndefined();
+    expect(db.prepare("SELECT value FROM vault_index_meta WHERE key = 'index_fingerprint'").get())
+      .toMatchObject({ value: VAULT_INDEX_FINGERPRINT });
+  });
+
   it("indexes generated session summaries", async () => {
     const { vaultPath } = setup();
     mkdirSync(join(vaultPath, "4_Archive", "_agent_sessions"), { recursive: true });
@@ -89,5 +119,7 @@ describe("vault indexer", () => {
     const report = await syncVaultIndex({ vaultPath, db, embed: vi.fn().mockResolvedValue(vectors()) });
     expect(report.added).toBe(1);
     expect(db.prepare("SELECT 1 FROM vault_notes WHERE path = ?").get("4_Archive/_agent_sessions/2026-01-01.md")).toBeTruthy();
+    expect(db.prepare("SELECT heading, start_line, end_line FROM vault_chunks WHERE path = ?").get("4_Archive/_agent_sessions/2026-01-01.md"))
+      .toMatchObject({ heading: "Session", start_line: 1, end_line: 2 });
   });
 });

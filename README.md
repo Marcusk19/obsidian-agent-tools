@@ -204,7 +204,7 @@ The vault is semantically indexed in a disposable SQLite database at:
 $OBSIDIAN_DATA_DIR/vault-index.db
 ```
 
-The index covers every Markdown note, including generated session summaries. Markdown files remain the source of truth and the index is refreshed lazily when searching. The fixed Ollama model `nomic-embed-text` supplies 768-dimensional embeddings.
+The index covers every Markdown note, including generated session summaries. Markdown files remain the source of truth and the index is refreshed lazily when searching. Notes are split on Markdown headings into approximately 400-token chunks with 80-token overlap; results retain their heading and source line range. The fixed Ollama model `nomic-embed-text` supplies 768-dimensional embeddings.
 
 ### Set up the vault index
 
@@ -244,9 +244,9 @@ To discard and recreate the derived index from the current Markdown files:
 obsidian-agent-search vault --rebuild "search your notes"
 ```
 
-The rebuild scans all Markdown files, including `4_Archive/_agent_sessions/`. It does not migrate or modify the legacy `summaries.db`. If Ollama is unavailable, keyword indexing and search still work, but semantic results are unavailable until embeddings can be generated.
+The rebuild scans all Markdown files, including `4_Archive/_agent_sessions/`. It does not migrate or modify the legacy `summaries.db`. The derived index records a fingerprint of its schema, embedding model and dimensions, chunking version, and source pattern; a mismatch automatically invalidates old rows so they can be rebuilt from Markdown. If Ollama is unavailable, keyword indexing and search still work, but semantic results are unavailable until embeddings can be generated.
 
-Use the semantic-first routed search through MCP:
+Use hybrid vault search through MCP:
 
 ```text
 obsidian_search_vault(query="explicit vault selector")
@@ -259,7 +259,7 @@ obsidian-agent-search vault "explicit vault selector"
 obsidian-agent-search vault --rebuild "explicit vault selector"
 ```
 
-Routing performs semantic retrieval first, then targeted keyword confirmation. Confirmed results are preferred; semantic-only results are retained with lower confidence. If Ollama is unavailable, keyword search continues to work.
+Search runs BM25 keyword retrieval and vector retrieval independently, merges their union with weighted component scores, and adds bounded path/title/heading boosts. The best matching chunk per note is returned with its heading and line range. Keyword-backed results are marked `confirmed`; semantic-only results are retained with lower confidence. If Ollama is unavailable, keyword search continues to work. Automatic pre-turn memory injection deliberately remains lexical-only for predictable latency.
 
 The older `summaries.db` is a legacy session-summary index and is not used by the vault search path. New session summaries are indexed from their Markdown files during the next vault search.
 

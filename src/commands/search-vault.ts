@@ -60,6 +60,7 @@ export async function run(args: string[]): Promise<void> {
   process.stdout.write(results.map((result, index) => [
     `**${index + 1}. ${result.title}** (${result.confidence})`,
     `Path: ${result.path}`,
+    result.heading ? `Section: ${result.heading} (lines ${result.startLine}-${result.endLine})` : `Lines: ${result.startLine}-${result.endLine}`,
     result.excerpt,
   ].join("\n")).join("\n\n---\n\n") + "\n");
 }

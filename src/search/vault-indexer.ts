@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, extname, join, relative, sep } from "node:path";
-import type { VaultIndexDatabase } from "../db/vault-index.js";
+import {
+  VAULT_CHUNK_OVERLAP_TOKENS,
+  VAULT_CHUNK_TARGET_TOKENS,
+  type VaultIndexDatabase,
+} from "../db/vault-index.js";
 import { EMBEDDING_DIM, embed as defaultEmbed } from "./embed.js";
 
 export interface SyncReport {
@@ -30,6 +34,27 @@ interface FileEntry {
   mtimeMs: number;
 }
 
+export interface VaultChunk {
+  chunkId: string;
+  path: string;
+  index: number;
+  heading: string;
+  startLine: number;
+  endLine: number;
+  content: string;
+  contentHash: string;
+}
+
+interface LineUnit {
+  line: number;
+  text: string;
+  tokens: number;
+}
+
+interface IndexingState {
+  embeddingUnavailable: boolean;
+}
+
 function normalizePath(path: string): string {
   return path.split(sep).join("/");
 }
@@ -41,6 +66,124 @@ function titleFor(path: string, content: string): string {
 
 function hashContent(content: string): string {
   return createHash("sha256").update(content).digest("hex");
+}
+
+function frontmatterEnd(lines: string[]): number {
+  if (lines[0]?.trim() !== "---") return 0;
+  const closing = lines.slice(1).findIndex((line) => line.trim() === "---");
+  return closing === -1 ? 0 : closing + 2;
+}
+
+function lineUnits(line: string, lineNumber: number): LineUnit[] {
+  const tokens = line.match(/\S+/g) ?? [];
+  if (tokens.length <= VAULT_CHUNK_TARGET_TOKENS) {
+    return [{ line: lineNumber, text: line, tokens: tokens.length }];
+  }
+  const units: LineUnit[] = [];
+  for (let offset = 0; offset < tokens.length; offset += VAULT_CHUNK_TARGET_TOKENS) {
+    const slice = tokens.slice(offset, offset + VAULT_CHUNK_TARGET_TOKENS);
+    units.push({ line: lineNumber, text: slice.join(" "), tokens: slice.length });
+  }
+  return units;
+}
+
+function chunkSection(params: {
+  path: string;
+  heading: string;
+  units: LineUnit[];
+  nextIndex: number;
+}): VaultChunk[] {
+  const chunks: VaultChunk[] = [];
+  let start = 0;
+  let index = params.nextIndex;
+
+  while (start < params.units.length) {
+    let end = start;
+    let tokens = 0;
+    while (end < params.units.length) {
+      const next = params.units[end];
+      if (end > start && tokens + next.tokens > VAULT_CHUNK_TARGET_TOKENS) break;
+      tokens += next.tokens;
+      end++;
+      if (tokens >= VAULT_CHUNK_TARGET_TOKENS) break;
+    }
+    if (end === start) end++;
+
+    const selected = params.units.slice(start, end);
+    const content = selected.map((unit) => unit.text).join("\n").trim();
+    if (content) {
+      chunks.push({
+        chunkId: `${params.path}:${index}`,
+        path: params.path,
+        index,
+        heading: params.heading,
+        startLine: selected[0].line,
+        endLine: selected[selected.length - 1].line,
+        content,
+        contentHash: hashContent(`${params.heading}\n${content}`),
+      });
+      index++;
+    }
+
+    if (end >= params.units.length) break;
+    let overlapStart = end;
+    let overlapTokens = 0;
+    while (overlapStart > start + 1 && overlapTokens < VAULT_CHUNK_OVERLAP_TOKENS) {
+      overlapStart--;
+      overlapTokens += params.units[overlapStart].tokens;
+    }
+    start = Math.max(start + 1, overlapStart);
+  }
+
+  return chunks;
+}
+
+export function chunkMarkdown(path: string, content: string): VaultChunk[] {
+  const lines = content.split(/\r?\n/);
+  const headings: string[] = [];
+  const chunks: VaultChunk[] = [];
+  let sectionHeading = "";
+  let sectionUnits: LineUnit[] = [];
+  let nextIndex = 0;
+
+  const flush = () => {
+    const sectionChunks = chunkSection({ path, heading: sectionHeading, units: sectionUnits, nextIndex });
+    chunks.push(...sectionChunks);
+    nextIndex += sectionChunks.length;
+    sectionUnits = [];
+  };
+
+  const bodyStart = frontmatterEnd(lines);
+  for (let offset = bodyStart; offset < lines.length; offset++) {
+    const line = lines[offset];
+    const headingMatch = /^(#{1,6})\s+(.+?)\s*$/.exec(line);
+    if (headingMatch) {
+      flush();
+      const level = headingMatch[1].length;
+      headings.length = level - 1;
+      headings[level - 1] = headingMatch[2].trim();
+      sectionHeading = headings.filter(Boolean).join(" › ");
+    }
+    sectionUnits.push(...lineUnits(line, offset + 1));
+  }
+  flush();
+
+  if (chunks.length === 0) {
+    const fallback = content.trim();
+    if (fallback) {
+      chunks.push({
+        chunkId: `${path}:0`,
+        path,
+        index: 0,
+        heading: "",
+        startLine: 1,
+        endLine: Math.max(1, lines.length),
+        content: fallback,
+        contentHash: hashContent(fallback),
+      });
+    }
+  }
+  return chunks;
 }
 
 function enumerateMarkdown(directory: string, vaultPath: string): string[] {
@@ -69,20 +212,75 @@ function readEntry(vaultPath: string, path: string): FileEntry {
   };
 }
 
-function removeVector(db: VaultIndexDatabase, path: string): void {
-  const mapping = db.prepare("SELECT vec_rowid FROM vault_note_vec_map WHERE path = ?").get(path) as { vec_rowid: number } | undefined;
-  if (mapping) db.prepare("DELETE FROM vault_note_vec WHERE rowid = ?").run(mapping.vec_rowid);
-  db.prepare("DELETE FROM vault_note_vec_map WHERE path = ?").run(path);
+function removeChunkVector(db: VaultIndexDatabase, chunkId: string): void {
+  const mapping = db.prepare("SELECT vec_rowid FROM vault_chunk_vec_map WHERE chunk_id = ?").get(chunkId) as { vec_rowid: number } | undefined;
+  if (mapping) db.prepare("DELETE FROM vault_chunk_vec WHERE rowid = ?").run(mapping.vec_rowid);
+  db.prepare("DELETE FROM vault_chunk_vec_map WHERE chunk_id = ?").run(chunkId);
 }
 
 function removeNote(db: VaultIndexDatabase, path: string): void {
-  removeVector(db, path);
-  db.prepare("DELETE FROM vault_note_fts WHERE path = ?").run(path);
+  const chunks = db.prepare("SELECT chunk_id FROM vault_chunks WHERE path = ?").all(path) as Array<{ chunk_id: string }>;
+  for (const { chunk_id: chunkId } of chunks) removeChunkVector(db, chunkId);
+  db.prepare("DELETE FROM vault_chunk_fts WHERE path = ?").run(path);
+  db.prepare("DELETE FROM vault_chunks WHERE path = ?").run(path);
   db.prepare("DELETE FROM vault_notes WHERE path = ?").run(path);
 }
 
 function previousNote(db: VaultIndexDatabase, path: string): { content_hash: string; mtime_ms: number; embedding_status: string } | undefined {
   return db.prepare("SELECT content_hash, mtime_ms, embedding_status FROM vault_notes WHERE path = ?").get(path) as { content_hash: string; mtime_ms: number; embedding_status: string } | undefined;
+}
+
+async function indexChunk(params: {
+  db: VaultIndexDatabase;
+  chunk: VaultChunk;
+  title: string;
+  makeEmbedding: typeof defaultEmbed;
+  keywordOnly: boolean;
+  state: IndexingState;
+}): Promise<{ keywordOnly: boolean; failed: boolean; error: string | null }> {
+  const { db, chunk, title } = params;
+  const attempt = new Date().toISOString();
+  db.prepare(`
+    INSERT INTO vault_chunks
+      (chunk_id, path, chunk_index, heading, start_line, end_line, content, content_hash, embedding_status, last_embedding_attempt)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+  `).run(chunk.chunkId, chunk.path, chunk.index, chunk.heading, chunk.startLine, chunk.endLine, chunk.content, chunk.contentHash, attempt);
+  db.prepare("INSERT INTO vault_chunk_fts (content, title, heading, path, chunk_id) VALUES (?, ?, ?, ?, ?)")
+    .run(chunk.content, title, chunk.heading, chunk.path, chunk.chunkId);
+
+  if (params.keywordOnly) {
+    db.prepare("UPDATE vault_chunks SET embedding_status = 'skipped' WHERE chunk_id = ?").run(chunk.chunkId);
+    return { keywordOnly: true, failed: false, error: null };
+  }
+  if (params.state.embeddingUnavailable) {
+    const error = "Embedding unavailable";
+    db.prepare("UPDATE vault_chunks SET embedding_status = 'failed', last_embedding_error = ? WHERE chunk_id = ?").run(error, chunk.chunkId);
+    return { keywordOnly: true, failed: true, error };
+  }
+
+  let vector: number[] | null = null;
+  let errorMessage: string | null = null;
+  try {
+    vector = await params.makeEmbedding([title, chunk.heading, chunk.content].filter(Boolean).join("\n"));
+    if (vector && vector.length !== EMBEDDING_DIM) {
+      throw new Error(`Expected ${EMBEDDING_DIM}-dimensional embedding, got ${vector.length}`);
+    }
+    if (!vector) params.state.embeddingUnavailable = true;
+  } catch (error) {
+    errorMessage = error instanceof Error ? error.message : String(error);
+  }
+
+  if (vector) {
+    const result = db.prepare("INSERT INTO vault_chunk_vec (embedding, chunk_id) VALUES (?, ?)")
+      .run(JSON.stringify(vector), chunk.chunkId);
+    db.prepare("INSERT INTO vault_chunk_vec_map (chunk_id, vec_rowid) VALUES (?, ?)").run(chunk.chunkId, result.lastInsertRowid);
+    db.prepare("UPDATE vault_chunks SET embedding_status = 'ready' WHERE chunk_id = ?").run(chunk.chunkId);
+    return { keywordOnly: false, failed: false, error: null };
+  }
+
+  errorMessage ||= "Embedding unavailable";
+  db.prepare("UPDATE vault_chunks SET embedding_status = 'failed', last_embedding_error = ? WHERE chunk_id = ?").run(errorMessage, chunk.chunkId);
+  return { keywordOnly: true, failed: true, error: errorMessage };
 }
 
 async function indexEntry(
@@ -92,6 +290,7 @@ async function indexEntry(
   force: boolean,
   keywordOnly: boolean,
   report: SyncReport,
+  state: IndexingState,
 ): Promise<void> {
   const previous = previousNote(db, entry.path);
   const contentUnchanged = previous?.content_hash === entry.contentHash && previous.mtime_ms === entry.mtimeMs;
@@ -108,39 +307,23 @@ async function indexEntry(
       (path, title, content, content_hash, mtime_ms, embedding_status, last_embedding_error, last_embedding_attempt)
     VALUES (?, ?, ?, ?, ?, 'pending', NULL, ?)
   `).run(entry.path, entry.title, entry.content, entry.contentHash, entry.mtimeMs, attempt);
-  db.prepare("INSERT INTO vault_note_fts (content, title, path) VALUES (?, ?, ?)").run(entry.content, entry.title, entry.path);
 
-  if (keywordOnly) {
-    db.prepare("UPDATE vault_notes SET embedding_status = 'skipped' WHERE path = ?").run(entry.path);
-    report.keywordOnly++;
-    if (isUpdate) report.updated++;
-    else report.added++;
-    return;
+  const chunks = chunkMarkdown(entry.path, entry.content);
+  let noteFailed = false;
+  let noteKeywordOnly = keywordOnly;
+  let lastError: string | null = null;
+  for (const chunk of chunks) {
+    const result = await indexChunk({ db, chunk, title: entry.title, makeEmbedding, keywordOnly, state });
+    noteFailed ||= result.failed;
+    noteKeywordOnly ||= result.keywordOnly;
+    lastError = result.error || lastError;
   }
 
-  let vector: number[] | null = null;
-  let errorMessage: string | null = null;
-  try {
-    vector = await makeEmbedding(`${entry.title}\n${entry.content}`);
-    if (vector && vector.length !== EMBEDDING_DIM) {
-      throw new Error(`Expected ${EMBEDDING_DIM}-dimensional embedding, got ${vector.length}`);
-    }
-  } catch (error) {
-    errorMessage = error instanceof Error ? error.message : String(error);
-  }
-
-  if (vector) {
-    const result = db.prepare(
-      "INSERT INTO vault_note_vec (embedding, path, title, content) VALUES (?, ?, ?, ?)"
-    ).run(JSON.stringify(vector), entry.path, entry.title, entry.content);
-    db.prepare("INSERT INTO vault_note_vec_map (path, vec_rowid) VALUES (?, ?)").run(entry.path, result.lastInsertRowid);
-    db.prepare("UPDATE vault_notes SET embedding_status = 'ready' WHERE path = ?").run(entry.path);
-  } else {
-    db.prepare("UPDATE vault_notes SET embedding_status = 'failed', last_embedding_error = ? WHERE path = ?").run(errorMessage || "Embedding unavailable", entry.path);
-    report.keywordOnly++;
-    report.failed++;
-  }
-
+  const status = keywordOnly ? "skipped" : noteFailed ? "failed" : "ready";
+  db.prepare("UPDATE vault_notes SET embedding_status = ?, last_embedding_error = ? WHERE path = ?")
+    .run(status, lastError, entry.path);
+  if (noteKeywordOnly) report.keywordOnly++;
+  if (noteFailed) report.failed++;
   if (isUpdate) report.updated++;
   else report.added++;
 }
@@ -150,6 +333,7 @@ export async function syncVaultIndex(options: SyncVaultOptions): Promise<SyncRep
   const makeEmbedding = options.embed || defaultEmbed;
   const paths = enumerateMarkdown(options.vaultPath, options.vaultPath);
   const seen = new Set(paths);
+  const state: IndexingState = { embeddingUnavailable: false };
 
   for (const path of paths) {
     report.scanned++;
@@ -161,6 +345,7 @@ export async function syncVaultIndex(options: SyncVaultOptions): Promise<SyncRep
         options.force === true,
         options.keywordOnly === true,
         report,
+        state,
       );
     } catch (error) {
       report.failed++;

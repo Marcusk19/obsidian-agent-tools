@@ -1,11 +1,14 @@
 import type Database from "better-sqlite3";
-import { join } from "node:path";
+import { basename, extname, join } from "node:path";
 import { openVaultIndex, rebuildVaultIndex, type VaultIndexDatabase } from "../db/vault-index.js";
 import { embed as defaultEmbed } from "./embed.js";
 import { syncVaultIndex } from "./vault-indexer.js";
 
 const DEFAULT_LIMIT = 10;
-const CANDIDATE_LIMIT = 30;
+const CANDIDATE_LIMIT = 100;
+const VECTOR_WEIGHT = 0.65;
+const TEXT_WEIGHT = 0.35;
+const PATH_BOOST_MAX = 0.15;
 
 export interface MemoryScopeContext {
   repository?: string;
@@ -30,40 +33,38 @@ export interface VaultSearchOptions {
 export interface VaultSearchResult {
   path: string;
   title: string;
+  heading: string;
+  startLine: number;
+  endLine: number;
   excerpt: string;
+  score: number;
   semanticScore: number;
+  lexicalScore: number;
   keywordConfirmed: boolean;
   confidence: "confirmed" | "semantic";
 }
 
+interface ChunkCandidate {
+  chunkId: string;
+  path: string;
+  title: string;
+  heading: string;
+  startLine: number;
+  endLine: number;
+  content: string;
+  noteContent: string;
+  vectorScore: number;
+  textScore: number;
+  keywordConfirmed: boolean;
+}
+
 function termsFor(text: string): string[] {
-  return text.match(/\w+/g) || [];
+  return text.match(/[\p{L}\p{N}_-]+/gu) || [];
 }
 
 function ftsQuery(text: string): string {
   const terms = termsFor(text);
-  return terms.length ? terms.map((term) => `"${term}"`).join(" OR ") : '""';
-}
-
-function excerpt(content: string, query: string): string {
-  const rule = section(content, "Rule");
-  if (rule) {
-    const appliesWhen = section(content, "Applies when");
-    return [compact(rule, 360), appliesWhen ? `Applies when: ${compact(appliesWhen, 140)}` : ""]
-      .filter(Boolean)
-      .join(" ");
-  }
-
-  const body = content.replace(/^---\s*\n[\s\S]*?\n---\s*/, "");
-  const terms = termsFor(query);
-  const lower = body.toLowerCase();
-  const position = terms.reduce((found, term) => {
-    const index = lower.indexOf(term.toLowerCase());
-    return found === -1 ? index : found;
-  }, -1);
-  const start = Math.max(0, position === -1 ? 0 : position - 120);
-  const end = Math.min(body.length, start + 400);
-  return compact(body.slice(start, end), 400);
+  return terms.length ? terms.map((term) => `"${term.replaceAll('"', '')}"`).join(" OR ") : '""';
 }
 
 function section(content: string, heading: string): string | undefined {
@@ -84,11 +85,24 @@ function compact(content: string, maxChars: number): string {
   return `${normalized.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
 }
 
-interface Candidate {
-  path: string;
-  title: string;
-  content: string;
-  distance: number;
+function excerpt(candidate: ChunkCandidate, query: string): string {
+  const rule = section(candidate.noteContent, "Rule");
+  if (rule) {
+    const appliesWhen = section(candidate.noteContent, "Applies when");
+    return [compact(rule, 360), appliesWhen ? `Applies when: ${compact(appliesWhen, 140)}` : ""]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const terms = termsFor(query);
+  const lower = candidate.content.toLowerCase();
+  const positions = terms
+    .map((term) => lower.indexOf(term.toLowerCase()))
+    .filter((position) => position >= 0);
+  const position = positions.length > 0 ? Math.min(...positions) : 0;
+  const start = Math.max(0, position - 120);
+  const end = Math.min(candidate.content.length, start + 400);
+  return compact(candidate.content.slice(start, end), 400);
 }
 
 function frontmatter(content: string): string | undefined {
@@ -146,77 +160,176 @@ function escapeLikeFragment(prefix: string): string {
   return prefix.replace(/([_%\\])/g, "\\$1");
 }
 
-function buildPathFilter(pathPrefixes?: string[]): { clause: string; params: string[] } {
-  if (!pathPrefixes?.length) {
-    return { clause: "", params: [] };
-  }
+function buildPathFilter(pathPrefixes?: string[], column = "path"): { clause: string; params: string[] } {
+  if (!pathPrefixes?.length) return { clause: "", params: [] };
   const safe = pathPrefixes.map((prefix) => `${escapeLikeFragment(prefix)}%`);
   return {
-    clause: ` AND (${safe.map(() => "path LIKE ? ESCAPE '\\'").join(" OR ")})`,
+    clause: ` AND (${safe.map(() => `${column} LIKE ? ESCAPE '\\'`).join(" OR ")})`,
     params: safe,
   };
 }
 
-function semanticCandidates(db: VaultIndexDatabase, vector: number[], pathPrefixes?: string[]): Candidate[] {
+function bm25Strength(rank: number): number {
+  if (!Number.isFinite(rank)) return 0;
+  return rank < 0 ? -rank : 1 / (1 + rank);
+}
+
+function vectorDistanceToScore(distance: number): number {
+  return 1 / (1 + Math.max(0, distance));
+}
+
+function keywordCandidates(
+  db: VaultIndexDatabase,
+  query: string,
+  pathPrefixes?: string[],
+): ChunkCandidate[] {
+  const filter = buildPathFilter(pathPrefixes, "f.path");
   const rows = db.prepare(`
-    SELECT path, title, content, distance
-    FROM vault_note_vec
+    SELECT f.chunk_id, f.path, f.title, f.heading, f.content,
+           c.start_line, c.end_line, n.content AS note_content,
+           bm25(vault_chunk_fts, 1.0, 2.0, 1.5) AS rank
+    FROM vault_chunk_fts AS f
+    JOIN vault_chunks AS c ON c.chunk_id = f.chunk_id
+    JOIN vault_notes AS n ON n.path = f.path
+    WHERE vault_chunk_fts MATCH ?${filter.clause}
+    ORDER BY rank
+    LIMIT ?
+  `).all(ftsQuery(query), ...filter.params, CANDIDATE_LIMIT) as Array<{
+    chunk_id: string;
+    path: string;
+    title: string;
+    heading: string;
+    content: string;
+    start_line: number;
+    end_line: number;
+    note_content: string;
+    rank: number;
+  }>;
+  const maxStrength = Math.max(...rows.map((row) => bm25Strength(row.rank)), 0);
+  return rows.map((row) => ({
+    chunkId: row.chunk_id,
+    path: row.path,
+    title: row.title,
+    heading: row.heading,
+    startLine: row.start_line,
+    endLine: row.end_line,
+    content: row.content,
+    noteContent: row.note_content,
+    vectorScore: 0,
+    textScore: maxStrength > 0 ? bm25Strength(row.rank) / maxStrength : 0,
+    keywordConfirmed: true,
+  }));
+}
+
+function vectorCandidates(
+  db: VaultIndexDatabase,
+  vector: number[],
+  pathPrefixes?: string[],
+): ChunkCandidate[] {
+  const matches = db.prepare(`
+    SELECT chunk_id, distance
+    FROM vault_chunk_vec
     WHERE embedding MATCH ?
     ORDER BY distance
     LIMIT ?
-  `).all(JSON.stringify(vector), CANDIDATE_LIMIT) as Candidate[];
-  if (!pathPrefixes?.length) return rows;
-  return rows.filter((row) => pathPrefixes.some((prefix) => row.path.startsWith(prefix)));
-}
+  `).all(JSON.stringify(vector), CANDIDATE_LIMIT) as Array<{ chunk_id: string; distance: number }>;
+  if (matches.length === 0) return [];
 
-function confirmedCandidates(db: VaultIndexDatabase, query: string, paths?: string[], pathPrefixes?: string[]): Map<string, { rank: number; content: string; title: string }> {
-  const keyword = ftsQuery(query);
-  if (paths && paths.length === 0) return new Map();
-  let clause = "";
-  const params: Array<string | number> = [keyword];
-  if (paths && paths.length > 0) {
-    clause += ` AND path IN (${paths.map(() => "?").join(",")})`;
-    params.push(...paths);
-  }
-  const filter = buildPathFilter(pathPrefixes);
-  clause += filter.clause;
-  params.push(...filter.params);
+  const byId = new Map(matches.map((match) => [match.chunk_id, match.distance]));
+  const placeholders = matches.map(() => "?").join(",");
   const rows = db.prepare(`
-    SELECT path, title, content, rank
-    FROM vault_note_fts
-    WHERE vault_note_fts MATCH ?${clause}
-    ORDER BY rank
-    LIMIT ?
-  `).all(...params, DEFAULT_LIMIT) as Array<{ path: string; title: string; content: string; rank: number }>;
-  return new Map(rows.map((row) => [row.path, { rank: row.rank, content: row.content, title: row.title }]));
+    SELECT c.chunk_id, c.path, n.title, c.heading, c.start_line, c.end_line,
+           c.content, n.content AS note_content
+    FROM vault_chunks AS c
+    JOIN vault_notes AS n ON n.path = c.path
+    WHERE c.chunk_id IN (${placeholders})
+  `).all(...matches.map((match) => match.chunk_id)) as Array<{
+    chunk_id: string;
+    path: string;
+    title: string;
+    heading: string;
+    start_line: number;
+    end_line: number;
+    content: string;
+    note_content: string;
+  }>;
+
+  return rows
+    .filter((row) => !pathPrefixes?.length || pathPrefixes.some((prefix) => row.path.startsWith(prefix)))
+    .map((row) => ({
+      chunkId: row.chunk_id,
+      path: row.path,
+      title: row.title,
+      heading: row.heading,
+      startLine: row.start_line,
+      endLine: row.end_line,
+      content: row.content,
+      noteContent: row.note_content,
+      vectorScore: vectorDistanceToScore(byId.get(row.chunk_id) ?? Number.POSITIVE_INFINITY),
+      textScore: 0,
+      keywordConfirmed: false,
+    }));
 }
 
-function broadKeywordResults(
-  db: VaultIndexDatabase,
+function pathBoost(candidate: ChunkCandidate, query: string): number {
+  const normalizedQuery = normalizeScope(query);
+  if (!normalizedQuery) return 0;
+  const values = [
+    candidate.path,
+    basename(candidate.path),
+    basename(candidate.path, extname(candidate.path)),
+    candidate.title,
+    candidate.heading,
+  ].map(normalizeScope).filter(Boolean);
+  if (values.some((value) => value === normalizedQuery)) return PATH_BOOST_MAX;
+  const queryTerms = termsFor(normalizedQuery);
+  if (queryTerms.length > 0 && values.some((value) => queryTerms.every((term) => value.includes(normalizeScope(term))))) {
+    return PATH_BOOST_MAX / 2;
+  }
+  return 0;
+}
+
+function mergeCandidates(
+  vector: ChunkCandidate[],
+  keyword: ChunkCandidate[],
   query: string,
-  limit: number,
-  pathPrefixes?: string[],
   statuses?: string[],
   memoryScope?: MemoryScopeContext,
 ): VaultSearchResult[] {
-  const keyword = ftsQuery(query);
-  const { clause, params } = buildPathFilter(pathPrefixes);
-  const rows = db.prepare(`
-    SELECT path, title, content, rank
-    FROM vault_note_fts
-    WHERE vault_note_fts MATCH ?${clause}
-    ORDER BY rank
-    LIMIT ?
-  `).all(keyword, ...params, limit) as Array<{ path: string; title: string; content: string; rank: number }>;
-  return rows
-    .filter((row) => matchesFilters(row.content, statuses, memoryScope))
-    .map((row) => ({
-      path: row.path,
-      title: row.title,
-      excerpt: excerpt(row.content, query),
-      semanticScore: 0,
-      keywordConfirmed: true,
-      confidence: "confirmed" as const,
+  const merged = new Map<string, ChunkCandidate>();
+  for (const candidate of [...vector, ...keyword]) {
+    const existing = merged.get(candidate.chunkId);
+    if (!existing) {
+      merged.set(candidate.chunkId, { ...candidate });
+      continue;
+    }
+    existing.vectorScore = Math.max(existing.vectorScore, candidate.vectorScore);
+    existing.textScore = Math.max(existing.textScore, candidate.textScore);
+    existing.keywordConfirmed ||= candidate.keywordConfirmed;
+  }
+
+  const bestByPath = new Map<string, { candidate: ChunkCandidate; score: number }>();
+  for (const candidate of merged.values()) {
+    if (!matchesFilters(candidate.noteContent, statuses, memoryScope)) continue;
+    const score = VECTOR_WEIGHT * candidate.vectorScore + TEXT_WEIGHT * candidate.textScore + pathBoost(candidate, query);
+    const existing = bestByPath.get(candidate.path);
+    if (!existing || score > existing.score) bestByPath.set(candidate.path, { candidate, score });
+  }
+
+  return [...bestByPath.values()]
+    .sort((a, b) => b.score - a.score || a.candidate.path.localeCompare(b.candidate.path))
+    .map(({ candidate, score }) => ({
+      path: candidate.path,
+      title: candidate.title,
+      heading: candidate.heading,
+      startLine: candidate.startLine,
+      endLine: candidate.endLine,
+      excerpt: excerpt(candidate, query),
+      score,
+      semanticScore: candidate.vectorScore,
+      lexicalScore: candidate.textScore,
+      keywordConfirmed: candidate.keywordConfirmed,
+      confidence: candidate.keywordConfirmed ? "confirmed" as const : "semantic" as const,
     }));
 }
 
@@ -235,40 +348,19 @@ export async function searchVault(options: VaultSearchOptions): Promise<VaultSea
     keywordOnly: options.semantic === false,
   });
 
+  const keyword = keywordCandidates(db, query, options.pathPrefixes);
   if (options.semantic === false) {
-    return broadKeywordResults(db, query, limit, options.pathPrefixes, options.statuses, options.memoryScope);
+    return mergeCandidates([], keyword, query, options.statuses, options.memoryScope).slice(0, limit);
   }
 
-  let vector: number[] | null = null;
+  let queryVector: number[] | null = null;
   try {
-    vector = await (options.embed || defaultEmbed)(query);
+    queryVector = await (options.embed || defaultEmbed)(query);
   } catch {
-    vector = null;
+    queryVector = null;
   }
-
-  if (!vector) return broadKeywordResults(db, query, limit, options.pathPrefixes, options.statuses, options.memoryScope);
-  const candidates = semanticCandidates(db, vector, options.pathPrefixes);
-  if (candidates.length === 0) return broadKeywordResults(db, query, limit, options.pathPrefixes, options.statuses, options.memoryScope);
-
-  const confirmed = confirmedCandidates(db, query, candidates.map((candidate) => candidate.path), options.pathPrefixes);
-  const results = candidates.reduce<VaultSearchResult[]>((acc, candidate) => {
-    const match = confirmed.get(candidate.path);
-    const content = match?.content || candidate.content;
-    if (!matchesFilters(content, options.statuses, options.memoryScope)) return acc;
-    acc.push({
-      path: candidate.path,
-      title: candidate.title,
-      excerpt: excerpt(content, query),
-      semanticScore: match?.rank ?? candidate.distance,
-      keywordConfirmed: Boolean(match),
-      confidence: match ? "confirmed" as const : "semantic" as const,
-    });
-    return acc;
-  }, []);
-
-  return results
-    .sort((a, b) => Number(b.keywordConfirmed) - Number(a.keywordConfirmed) || a.semanticScore - b.semanticScore)
-    .slice(0, limit);
+  const vector = queryVector ? vectorCandidates(db, queryVector, options.pathPrefixes) : [];
+  return mergeCandidates(vector, keyword, query, options.statuses, options.memoryScope).slice(0, limit);
 }
 
 export function defaultDataDir(home = process.env.HOME || "/tmp"): string {

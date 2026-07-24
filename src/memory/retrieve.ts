@@ -60,7 +60,7 @@ export async function retrieveMemoryContext(
           tier,
           confidence: result.confidence,
           excerpt: result.excerpt,
-          score: result.semanticScore,
+          score: result.score,
         });
         seen.add(result.path);
         if (selected.length >= limit) break;

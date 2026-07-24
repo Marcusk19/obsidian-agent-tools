@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe("vault search", () => {
-  it("searches semantically first and confirms only semantic candidates", async () => {
+  it("merges independent semantic and lexical candidates", async () => {
     root = mkdtempSync(join(tmpdir(), "vault-search-test-"));
     const vaultPath = join(root, "vault");
     const dataDir = join(root, "data");
@@ -31,10 +31,39 @@ describe("vault search", () => {
       keywordConfirmed: true,
       confidence: "confirmed",
     });
+    expect(results[0].lexicalScore).toBeGreaterThan(0);
+    expect(results[0].semanticScore).toBeGreaterThan(0);
     expect(results.find((result) => result.path === "unrelated.md")).toMatchObject({
       keywordConfirmed: false,
       confidence: "semantic",
     });
+  });
+
+  it("returns the matching heading and line range from a long note", async () => {
+    root = mkdtempSync(join(tmpdir(), "vault-search-test-"));
+    const vaultPath = join(root, "vault");
+    const dataDir = join(root, "data");
+    mkdirSync(vaultPath, { recursive: true });
+    const filler = Array.from({ length: 30 }, (_, index) => `Background line ${index} ${"padding ".repeat(20)}`).join("\n");
+    writeFileSync(join(vaultPath, "project.md"), `# Project\n\n## Background\n${filler}\n\n## Deployment decision\nUse the canary telescope procedure for production.`);
+    db = openVaultIndex(dataDir);
+
+    const results = await searchVault({
+      query: "canary telescope procedure",
+      vaultPath,
+      dataDir,
+      db,
+      semantic: false,
+      embed: vi.fn(),
+    });
+
+    expect(results[0]).toMatchObject({
+      path: "project.md",
+      heading: "Project › Deployment decision",
+      confidence: "confirmed",
+    });
+    expect(results[0].startLine).toBeGreaterThan(30);
+    expect(results[0].excerpt).toContain("canary telescope procedure");
   });
 
   it("uses the lexical index without calling embeddings when semantic search is disabled", async () => {

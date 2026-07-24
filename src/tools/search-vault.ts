@@ -14,7 +14,7 @@ function dataDir(): string {
 export function registerVaultSearchTools(server: McpServer): void {
   server.tool(
     "obsidian_search_vault",
-    "Search all Markdown notes using semantic retrieval followed by targeted keyword confirmation.",
+    "Search heading-aware Markdown chunks using merged keyword and semantic retrieval.",
     {
       query: z.string(),
       limit: z.number().int().min(1).max(50).optional().default(10),
@@ -29,6 +29,7 @@ export function registerVaultSearchTools(server: McpServer): void {
           : results.map((result, index) => [
               `**${index + 1}. ${result.title}** (${result.confidence})`,
               `Path: ${result.path}`,
+              result.heading ? `Section: ${result.heading} (lines ${result.startLine}-${result.endLine})` : `Lines: ${result.startLine}-${result.endLine}`,
               result.excerpt,
             ].join("\n")).join("\n\n---\n\n");
         return { content: [{ type: "text" as const, text }] };
