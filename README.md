@@ -113,7 +113,16 @@ checkout, use `pi install /absolute/path/to/obsidian-agent-tools` after running
 `npm install && npm run build` in the checkout.
 
 Pi uses the CLI fallback documented in the skill because no MCP server is
-required.
+required. After installation, run the bootstrap command once to pull the
+embedding model and create or rebuild the local vector index:
+
+```text
+/obsidian-bootstrap
+```
+
+The command requires Ollama to be installed and running. It skips the model pull
+when `nomic-embed-text` is already present, then rebuilds
+`$OBSIDIAN_DATA_DIR/vault-index.db` from the configured vault.
 
 ## Automatic memory context
 

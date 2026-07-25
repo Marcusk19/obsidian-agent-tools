@@ -22,6 +22,18 @@ beforeAll(async () => {
   ({ default: obsidianAgentTools } = await import(new URL("../../../integrations/pi/obsidian-agent-tools.ts", import.meta.url).href));
 });
 
+function createPi(
+  handlers: Record<string, (event: any, ctx: any) => Promise<any> | any>,
+  commands: Record<string, { handler: (args: string, ctx: any) => Promise<void> }> = {},
+  exec = vi.fn(),
+): any {
+  return {
+    exec,
+    on: vi.fn((event: string, handler: (event: any, ctx: any) => any) => { handlers[event] = handler; }),
+    registerCommand: vi.fn((name: string, command: { handler: (args: string, ctx: any) => Promise<void> }) => { commands[name] = command; }),
+  };
+}
+
 describe("Pi integration", () => {
   beforeEach(() => {
     execFileMock.mockReset();
@@ -49,7 +61,7 @@ describe("Pi integration", () => {
       callback?.(null, "## Relevant memory context", "");
     });
     const handlers: Record<string, (event: any, ctx: any) => Promise<any> | any> = {};
-    const pi = { on: vi.fn((event: string, handler: (event: any, ctx: any) => any) => { handlers[event] = handler; }) } as any;
+    const pi = createPi(handlers);
 
     obsidianAgentTools(pi);
     expect(pi.on).toHaveBeenCalledWith("before_agent_start", expect.any(Function));
@@ -81,7 +93,7 @@ describe("Pi integration", () => {
       callback?.(null, "", "");
     });
     const handlers: Record<string, (event: any, ctx: any) => Promise<any> | any> = {};
-    const pi = { on: vi.fn((event: string, handler: (event: any, ctx: any) => any) => { handlers[event] = handler; }) } as any;
+    const pi = createPi(handlers);
 
     obsidianAgentTools(pi);
     await handlers.before_agent_start!({ prompt: "Need context", systemPrompt: "Base prompt" }, { cwd: "/repo" });
@@ -99,7 +111,7 @@ describe("Pi integration", () => {
       callback?.(new Error("context error"), "", "");
     });
     const handlers: Record<string, (event: any, ctx: any) => Promise<any> | any> = {};
-    const pi = { on: vi.fn((event: string, handler: (event: any, ctx: any) => any) => { handlers[event] = handler; }) } as any;
+    const pi = createPi(handlers);
 
     obsidianAgentTools(pi);
     const handler = handlers.before_agent_start!;
@@ -113,7 +125,7 @@ describe("Pi integration", () => {
   it("preserves the memory opt-out", async () => {
     process.env.OBSIDIAN_MEMORY_ENABLED = "0";
     const handlers: Record<string, (event: any, ctx: any) => Promise<any> | any> = {};
-    const pi = { on: vi.fn((event: string, handler: (event: any, ctx: any) => any) => { handlers[event] = handler; }) } as any;
+    const pi = createPi(handlers);
 
     obsidianAgentTools(pi);
     const result = await handlers.before_agent_start!({ prompt: "Need context", systemPrompt: "Base prompt" }, { cwd: "/repo" });
@@ -128,7 +140,7 @@ describe("Pi integration", () => {
       callback?.(null, "", "");
     });
     const handlers: Record<string, (event: any, ctx: any) => Promise<any> | any> = {};
-    const pi = { on: vi.fn((event: string, handler: (event: any, ctx: any) => any) => { handlers[event] = handler; }) } as any;
+    const pi = createPi(handlers);
 
     obsidianAgentTools(pi);
     await handlers.before_agent_start!({ prompt: "Need context", systemPrompt: "Base prompt" }, { cwd: "/repo" });
@@ -141,9 +153,49 @@ describe("Pi integration", () => {
     );
   });
 
+  it("bootstraps the embedding model and vector index", async () => {
+    const handlers: Record<string, (event: any, ctx: any) => Promise<any> | any> = {};
+    const commands: Record<string, { handler: (args: string, ctx: any) => Promise<void> }> = {};
+    const exec = vi.fn()
+      .mockResolvedValueOnce({ code: 0, stdout: "NAME ID SIZE MODIFIED\n", stderr: "" })
+      .mockResolvedValueOnce({ code: 0, stdout: "success", stderr: "" })
+      .mockResolvedValueOnce({ code: 0, stdout: "No matching notes found.", stderr: "" });
+    const pi = createPi(handlers, commands, exec);
+    const ui = { notify: vi.fn(), setStatus: vi.fn() };
+
+    obsidianAgentTools(pi);
+    await commands["obsidian-bootstrap"]!.handler("", { ui });
+
+    expect(exec).toHaveBeenNthCalledWith(1, "ollama", ["list"], { timeout: 15_000 });
+    expect(exec).toHaveBeenNthCalledWith(2, "ollama", ["pull", "nomic-embed-text"], { timeout: 15 * 60_000 });
+    expect(exec).toHaveBeenNthCalledWith(
+      3,
+      expect.stringMatching(/bin\/obsidian-agent-search$/),
+      ["vault", "--rebuild", "agent memory"],
+      { timeout: 30 * 60_000 },
+    );
+    expect(ui.notify).toHaveBeenCalledWith("Obsidian vector index is ready.", "info");
+    expect(ui.setStatus).toHaveBeenLastCalledWith("obsidian-bootstrap", undefined);
+  });
+
+  it("reuses an installed embedding model during bootstrap", async () => {
+    const handlers: Record<string, (event: any, ctx: any) => Promise<any> | any> = {};
+    const commands: Record<string, { handler: (args: string, ctx: any) => Promise<void> }> = {};
+    const exec = vi.fn()
+      .mockResolvedValueOnce({ code: 0, stdout: "NAME ID SIZE MODIFIED\nnomic-embed-text:latest abc 274 MB now\n", stderr: "" })
+      .mockResolvedValueOnce({ code: 0, stdout: "No matching notes found.", stderr: "" });
+    const pi = createPi(handlers, commands, exec);
+
+    obsidianAgentTools(pi);
+    await commands["obsidian-bootstrap"]!.handler("", { ui: { notify: vi.fn(), setStatus: vi.fn() } });
+
+    expect(exec).toHaveBeenCalledTimes(2);
+    expect(exec).not.toHaveBeenCalledWith("ollama", ["pull", "nomic-embed-text"], expect.any(Object));
+  });
+
   it("uses the packaged summarizer on quit", async () => {
     const handlers: Record<string, (event: any, ctx: any) => Promise<any> | any> = {};
-    const pi = { on: vi.fn((event: string, handler: (event: any, ctx: any) => any) => { handlers[event] = handler; }) } as any;
+    const pi = createPi(handlers);
     const branch = [
       { type: "message", timestamp: "2026-07-23T10:00:00Z", message: { role: "user", content: "Please summarize this session after we finish enough meaningful implementation work to exceed the minimum transcript length." } },
       { type: "message", timestamp: "2026-07-23T10:01:00Z", message: { role: "assistant", content: "Implemented the requested packaging changes while preserving the existing memory retrieval and detached session summarization behavior." } },

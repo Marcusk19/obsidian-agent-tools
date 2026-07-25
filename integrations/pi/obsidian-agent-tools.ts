@@ -7,6 +7,7 @@ import { execFile, spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const PACKAGED_CONTEXT_EXECUTABLE = fileURLToPath(new URL("../../bin/obsidian-agent-context", import.meta.url));
+const PACKAGED_SEARCH_EXECUTABLE = fileURLToPath(new URL("../../bin/obsidian-agent-search", import.meta.url));
 const PACKAGED_SUMMARIZER_EXECUTABLE = fileURLToPath(new URL("../../bin/obsidian-agent-summarize", import.meta.url));
 const MEMORY_SYSTEM_PROMPT = `# Obsidian Agent Memory
 
@@ -67,6 +68,52 @@ async function runMemoryContext(prompt: string, cwd?: string): Promise<string> {
 }
 
 export default function obsidianAgentTools(pi: ExtensionAPI): void {
+  pi.registerCommand("obsidian-bootstrap", {
+    description: "Install the embedding model and rebuild the local Obsidian vector index",
+    handler: async (_args, ctx) => {
+      ctx.ui.setStatus("obsidian-bootstrap", "Checking Ollama...");
+      try {
+        const list = await pi.exec("ollama", ["list"], { timeout: 15_000 });
+        if (list.code !== 0) {
+          const details = list.stderr.trim() || list.stdout.trim() || `exit code ${list.code}`;
+          ctx.ui.notify(`Ollama is unavailable: ${details}`, "error");
+          return;
+        }
+
+        const hasEmbeddingModel = list.stdout
+          .split("\n")
+          .some((line) => line.trim().split(/\s+/, 1)[0]?.startsWith("nomic-embed-text:"));
+        if (!hasEmbeddingModel) {
+          ctx.ui.setStatus("obsidian-bootstrap", "Pulling nomic-embed-text...");
+          const pull = await pi.exec("ollama", ["pull", "nomic-embed-text"], { timeout: 15 * 60_000 });
+          if (pull.code !== 0) {
+            const details = pull.stderr.trim() || pull.stdout.trim() || `exit code ${pull.code}`;
+            ctx.ui.notify(`Could not install nomic-embed-text: ${details}`, "error");
+            return;
+          }
+        }
+
+        ctx.ui.setStatus("obsidian-bootstrap", "Rebuilding the Obsidian index...");
+        const index = await pi.exec(
+          PACKAGED_SEARCH_EXECUTABLE,
+          ["vault", "--rebuild", "agent memory"],
+          { timeout: 30 * 60_000 },
+        );
+        if (index.code !== 0) {
+          const details = index.stderr.trim() || index.stdout.trim() || `exit code ${index.code}`;
+          ctx.ui.notify(`Could not build the Obsidian index: ${details}`, "error");
+          return;
+        }
+
+        ctx.ui.notify("Obsidian vector index is ready.", "info");
+      } catch (error) {
+        ctx.ui.notify(`Obsidian bootstrap failed: ${error instanceof Error ? error.message : String(error)}`, "error");
+      } finally {
+        ctx.ui.setStatus("obsidian-bootstrap", undefined);
+      }
+    },
+  });
+
   pi.on("before_agent_start", async (event, ctx) => {
     if (process.env.OBSIDIAN_MEMORY_ENABLED === "0") return;
     const prompt = (event as { prompt?: string }).prompt?.trim();
