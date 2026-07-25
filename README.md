@@ -20,14 +20,14 @@ Cross-harness tools for using an Obsidian vault from agent runtimes. The package
 | `OBSIDIAN_CLI_PATH` | `/Applications/Obsidian.app/Contents/MacOS/obsidian` | Obsidian CLI binary |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | Local Ollama endpoint |
 | `OBSIDIAN_SUMMARY_MODEL` | `qwen2.5:7b` | Local model used for session summaries |
-| `OBSIDIAN_AGENT_SUMMARIZER` | repository launcher | Override the shared summarizer executable |
+| `OBSIDIAN_AGENT_SUMMARIZER` | package-local in Pi; repository launcher otherwise | Override the shared summarizer executable |
 | `OBSIDIAN_MEMORY_ENABLED` | enabled | Set to `0` to disable automatic memory-context injection |
 | `OBSIDIAN_MEMORY_TIMEOUT_MS` | `5000` | Maximum time Pi and Claude hooks wait for memory retrieval |
 | `OBSIDIAN_MEMORY_MAX_CHARS` | `2000` | Rendered-character budget for injected memory context |
 | `OBSIDIAN_MEMORY_MAX_RESULTS` | `1` | Maximum confirmed durable-memory candidate |
 | `OBSIDIAN_MEMORY_PROJECT_RESULTS` | `1` | Maximum current-project candidate |
 | `OBSIDIAN_MEMORY_BROAD_RESULTS` | `0` | Broad-vault candidates; set above zero to opt in for explicit recall prompts |
-| `OBSIDIAN_AGENT_CONTEXT` | `$HOME/.local/bin/obsidian-agent-context` | Shared retrieval executable used by Pi and Claude hooks |
+| `OBSIDIAN_AGENT_CONTEXT` | package-local in Pi; `$HOME/.local/bin/obsidian-agent-context` otherwise | Override the shared retrieval executable used by Pi and Claude hooks |
 
 Session summaries are generated locally. Transcripts are not sent to Vertex AI or another remote provider.
 
@@ -98,15 +98,21 @@ lola install obsidian-agent-tools --assistant claude-code --scope user --force \
 ```
 
 Lola currently lists Claude Code, Cursor, Gemini CLI, OpenClaw, and OpenCode as
-installation targets; Pi is not a Lola target yet. For Pi, install the same skill
-manually after cloning the repository:
+installation targets; Pi uses its native package support instead:
 
 ```bash
-mkdir -p ~/.agents/skills/agent-memory
-cp -R module/skills/agent-memory/. ~/.agents/skills/agent-memory/
+pi install npm:obsidian-agent-tools
+# Or pin an unpublished Git revision:
+pi install git:github.com/Marcusk19/obsidian-agent-tools@<commit-or-tag>
 ```
 
-Pi will use the CLI fallback documented in the skill because no MCP server is
+This installs both the Pi extension and the `agent-memory` skill. The extension
+uses the package-local context and summarizer launchers, so no global npm install
+or manual copy into `~/.agents/skills` is needed. To test an unpublished local
+checkout, use `pi install /absolute/path/to/obsidian-agent-tools` after running
+`npm install && npm run build` in the checkout.
+
+Pi uses the CLI fallback documented in the skill because no MCP server is
 required.
 
 ## Automatic memory context
@@ -194,7 +200,13 @@ Set `OBSIDIAN_AGENT_SUMMARIZER` to the absolute path of `bin/obsidian-agent-summ
 
 ### Pi
 
-Load `integrations/pi/obsidian-agent-tools.ts` as a Pi extension. Set `OBSIDIAN_AGENT_SUMMARIZER` to the absolute path of `bin/obsidian-agent-summarize`, then start Pi with the extension enabled. The extension summarizes only actual quit events and runs the shared process detached.
+Install the package with `pi install npm:obsidian-agent-tools`, or test a pinned
+revision with
+`pi install git:github.com/Marcusk19/obsidian-agent-tools@<commit-or-tag>`. Pi
+loads `integrations/pi/obsidian-agent-tools.ts` automatically. The extension summarizes
+only actual quit events and runs the package-local shared process detached.
+`OBSIDIAN_AGENT_SUMMARIZER` remains available as an explicit executable
+override.
 
 ## Search
 

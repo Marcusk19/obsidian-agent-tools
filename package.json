@@ -12,14 +12,23 @@
   "files": [
     "dist",
     "bin",
-    "integrations"
+    "integrations",
+    "module/skills"
   ],
+  "pi": {
+    "extensions": [
+      "./integrations/pi/obsidian-agent-tools.ts"
+    ],
+    "skills": [
+      "./module/skills"
+    ]
+  },
   "scripts": {
     "build": "rm -rf dist && tsc && cp -r src/db/migrations dist/db/",
     "dev": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm test && npm run build"
   },
   "keywords": [
     "mcp",
@@ -27,12 +36,16 @@
     "agents",
     "pi",
     "claude-code",
-    "model-context-protocol"
+    "model-context-protocol",
+    "pi-package"
   ],
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Marcusk19/obsidian-agent-tools"
+    "url": "git+https://github.com/Marcusk19/obsidian-agent-tools.git"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "engines": {
     "node": ">=18"
@@ -42,6 +55,22 @@
     "better-sqlite3": "^12.9.0",
     "sqlite-vec": "^0.1.9",
     "zod": "^3.25.11"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-agent-core": {
+      "optional": true
+    },
+    "@earendil-works/pi-ai": {
+      "optional": true
+    },
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",

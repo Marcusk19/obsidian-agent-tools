@@ -4,6 +4,13 @@ import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const PACKAGED_CONTEXT_EXECUTABLE = fileURLToPath(new URL("../../bin/obsidian-agent-context", import.meta.url));
+const PACKAGED_SUMMARIZER_EXECUTABLE = fileURLToPath(new URL("../../bin/obsidian-agent-summarize", import.meta.url));
+const MEMORY_SYSTEM_PROMPT = `# Obsidian Agent Memory
+
+Automatic memory-context injection satisfies routine retrieval. Apply injected guidance only within its recorded scope. Use the agent-memory skill for deeper retrieval, exact source reads, or memory maintenance. Capture explicit corrections, durable preferences, and reusable failures autonomously. Never store secrets or sensitive data, and verify every memory write by reading it back before claiming success.`;
 
 interface ContentBlock { type: string; text?: string }
 interface SessionEntry { type: string; timestamp?: string; message?: { role?: string; content?: string | ContentBlock[] } }
@@ -40,7 +47,7 @@ function memoryTimeoutMs(): number {
 }
 
 async function runMemoryContext(prompt: string, cwd?: string): Promise<string> {
-  const executable = process.env.OBSIDIAN_AGENT_CONTEXT || join(process.env.HOME || "/tmp", ".local", "bin", "obsidian-agent-context");
+  const executable = process.env.OBSIDIAN_AGENT_CONTEXT || PACKAGED_CONTEXT_EXECUTABLE;
   const args = [] as string[];
   if (cwd) {
     args.push("--cwd", cwd);
@@ -64,20 +71,22 @@ export default function obsidianAgentTools(pi: ExtensionAPI): void {
     if (process.env.OBSIDIAN_MEMORY_ENABLED === "0") return;
     const prompt = (event as { prompt?: string }).prompt?.trim();
     if (!prompt) return;
+    const systemPrompt = `${event.systemPrompt}\n\n${MEMORY_SYSTEM_PROMPT}`;
     try {
       const output = await runMemoryContext(prompt, ctx.cwd);
       const content = output.trim();
-      if (!content) return;
+      if (!content) return { systemPrompt };
       return {
         message: {
           customType: "obsidian-memory",
           content,
           display: false,
         },
+        systemPrompt,
       };
     } catch (error) {
       log(`memory retrieval skipped: ${error instanceof Error ? error.message : String(error)}`);
-      return;
+      return { systemPrompt };
     }
   });
 
@@ -103,7 +112,7 @@ export default function obsidianAgentTools(pi: ExtensionAPI): void {
         startedAt: branch.find((entry) => entry.timestamp)?.timestamp,
         endedAt: new Date().toISOString(),
       }));
-      const executable = process.env.OBSIDIAN_AGENT_SUMMARIZER || join(process.env.HOME || "/tmp", ".local", "bin", "obsidian-agent-summarize");
+      const executable = process.env.OBSIDIAN_AGENT_SUMMARIZER || PACKAGED_SUMMARIZER_EXECUTABLE;
       const child = spawn(executable, [file], { detached: true, stdio: "ignore", env: { ...process.env } });
       child.unref();
       log(`spawned summarizer for ${file}`);
