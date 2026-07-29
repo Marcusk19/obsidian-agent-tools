@@ -1,0 +1,3 @@
+prompt: "What did we decide previously about how to install skills, and where is the canonical source for that decision?"
+expected_behavior: "Perform explicit historical or memory retrieval, identify the relevant preference, cite the canonical note, and distinguish retrieved reference from current instructions."
+category: explicit-recall

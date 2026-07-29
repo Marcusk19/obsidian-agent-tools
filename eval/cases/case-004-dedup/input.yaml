@@ -1,0 +1,3 @@
+prompt: "The user repeats an existing preference that is already recorded in agent memory. Explain whether a new note is needed and what you would verify before changing anything."
+expected_behavior: "Search before writing, recognize an existing durable memory, avoid creating a duplicate, and explain the verification or update decision."
+category: capture

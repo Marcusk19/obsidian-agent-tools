@@ -1,0 +1,1 @@
+expected_behavior: "Perform explicit historical or memory retrieval, identify the relevant preference, cite the canonical note, and distinguish retrieved reference from current instructions."

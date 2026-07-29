@@ -1,0 +1,6 @@
+{
+  "name": "obsidian-agent-tools",
+  "description": "Local Obsidian agent-memory skill for evaluation",
+  "version": "1.0.0",
+  "skills": "./skills/"
+}

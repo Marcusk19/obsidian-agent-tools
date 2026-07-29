@@ -1,0 +1,89 @@
+name: obsidian-agent-memory
+version: "1.0"
+description: >
+  Evaluate whether the agent-memory skill uses injected memory efficiently,
+  retrieves only when needed, and follows memory capture and verification rules.
+skill: agent-memory-eval
+
+execution:
+  mode: case
+  arguments: "{prompt}"
+  timeout: 900
+  parallelism: 1
+
+runner:
+  type: claude-code
+  plugin_dirs:
+    - .
+
+models:
+  skill: claude-sonnet-4-6
+  judge: claude-sonnet-4-6
+
+permissions:
+  allow:
+    - Read
+    - Bash
+    - Edit
+    - Write
+  deny:
+    - "Bash(git push*)"
+    - "Bash(gh pr create*)"
+    - "Bash(gh issue create*)"
+
+# The environment variable can be overridden for comparison runs:
+# OBSIDIAN_MEMORY_ENABLED=0 ... eval-run ...
+
+dataset:
+  path: eval/cases
+  schema: |
+    Each case directory contains input.yaml with:
+    - prompt: the user request sent to the agent.
+    - expected_behavior: concise description of the memory behavior being tested.
+    - category: one of routine, explicit-recall, capture, or verification.
+    Cases may also contain annotations.yaml with expected outcome metadata.
+
+outputs:
+  - path: output
+    schema: |
+      The agent's response and any in-place changes or note artifacts produced
+      while handling the prompt. Execution traces capture stdout, stderr,
+      tool calls, duration, turns, and cost for efficiency comparisons.
+
+traces:
+  stdout: true
+  stderr: true
+  events: true
+  metrics: true
+
+judges:
+  - name: nonempty_response
+    description: The agent should produce a substantive response for every case.
+    check: |
+      text = outputs.get("conversation", "") or outputs.get("stdout", "")
+      ok = bool(str(text).strip())
+      return ok, "response was produced" if ok else "response was empty"
+
+  - name: memory_behavior
+    description: Evaluate whether the response follows the expected memory behavior for the case.
+    prompt: |
+      Evaluate the agent response against the case's expected behavior.
+      Give a score from 1 to 5:
+      5 = follows the expected memory behavior precisely and explains relevant evidence;
+      3 = mostly correct but misses an important detail;
+      1 = ignores or contradicts the memory policy.
+
+      Case input and expected behavior:
+      {{ annotations }}
+
+      Agent response and collected outputs:
+      {{ conversation }}
+      {{ outputs }}
+
+      Return only a numeric score from 1 to 5 and a short rationale.
+
+thresholds:
+  nonempty_response:
+    min_pass_rate: 1.0
+  memory_behavior:
+    min_mean: 3.5

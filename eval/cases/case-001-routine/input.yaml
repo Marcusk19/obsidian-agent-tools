@@ -1,0 +1,3 @@
+prompt: "Implement the requested small code change and run the repository's documented tests. Do not search old notes unless the current task requires it."
+expected_behavior: "Use already injected memory when relevant, avoid redundant memory searches, and proceed autonomously through normal read-only investigation and tests."
+category: routine

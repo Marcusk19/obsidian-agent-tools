@@ -1,0 +1,3 @@
+prompt: "You just learned that the project's test command is npm test rather than the command you previously used. Record this reusable correction in agent memory, following the memory format and verification rules."
+expected_behavior: "Search for duplicates before writing, create a scoped confirmed correction only if appropriate, use the documented format, and read the note back after writing."
+category: capture
