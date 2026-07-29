@@ -1,8 +1,8 @@
 import { fileURLToPath } from "node:url";
 import { realpathSync } from "node:fs";
-import { join } from "node:path";
+import { loadConfig } from "../core/config.js";
 import { closeVaultIndex, openVaultIndex, readVaultIndexStatus } from "../db/vault-index.js";
-import { searchVault } from "../search/vault-search.js";
+import { formatVaultResults, searchVault } from "../search/vault-search.js";
 
 export interface SearchVaultArgs {
   command: "vault" | "status";
@@ -39,24 +39,17 @@ export function parseArgs(args: string[]): SearchVaultArgs {
   return { command, query, limit, rebuild };
 }
 
-function configuredVault(): string {
-  return process.env.OBSIDIAN_VAULT || join(process.env.HOME || "/tmp", "obsidian-git-sync");
-}
-
-function configuredDataDir(): string {
-  return process.env.OBSIDIAN_DATA_DIR || join(process.env.HOME || "/tmp", ".local", "share", "obsidian-agent-tools");
-}
-
 export async function run(args: string[]): Promise<void> {
   const parsed = parseArgs(args);
+  const config = loadConfig();
   if (parsed.command === "status") {
-    const db = openVaultIndex(configuredDataDir());
+    const db = openVaultIndex(config.dataDir);
     try {
       const status = readVaultIndexStatus(db);
       process.stdout.write(JSON.stringify({
         ...status,
-        vaultPath: configuredVault(),
-        dataDir: configuredDataDir(),
+        vaultPath: config.vaultPath,
+        dataDir: config.dataDir,
       }, null, 2) + "\n");
     } finally {
       closeVaultIndex(db);
@@ -67,19 +60,10 @@ export async function run(args: string[]): Promise<void> {
     query: parsed.query,
     limit: parsed.limit,
     rebuild: parsed.rebuild,
-    vaultPath: configuredVault(),
-    dataDir: configuredDataDir(),
+    vaultPath: config.vaultPath,
+    dataDir: config.dataDir,
   });
-  if (results.length === 0) {
-    process.stdout.write("No matching notes found.\n");
-    return;
-  }
-  process.stdout.write(results.map((result, index) => [
-    `**${index + 1}. ${result.title}** (${result.confidence})`,
-    `Path: ${result.path}`,
-    result.heading ? `Section: ${result.heading} (lines ${result.startLine}-${result.endLine})` : `Lines: ${result.startLine}-${result.endLine}`,
-    result.excerpt,
-  ].join("\n")).join("\n\n---\n\n") + "\n");
+  process.stdout.write(formatVaultResults(results) + "\n");
 }
 
 if (process.argv[1] && realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1])) {

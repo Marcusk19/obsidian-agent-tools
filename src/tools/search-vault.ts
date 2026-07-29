@@ -1,15 +1,7 @@
-import { join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { searchVault } from "../search/vault-search.js";
-
-function vaultPath(): string {
-  return process.env.OBSIDIAN_VAULT || join(process.env.HOME || "/tmp", "obsidian-git-sync");
-}
-
-function dataDir(): string {
-  return process.env.OBSIDIAN_DATA_DIR || join(process.env.HOME || "/tmp", ".local", "share", "obsidian-agent-tools");
-}
+import { loadConfig } from "../core/config.js";
+import { formatVaultResults, searchVault } from "../search/vault-search.js";
 
 export function registerVaultSearchTools(server: McpServer): void {
   server.tool(
@@ -23,15 +15,9 @@ export function registerVaultSearchTools(server: McpServer): void {
     { readOnlyHint: true },
     async ({ query, limit, rebuild }) => {
       try {
-        const results = await searchVault({ query, limit, rebuild, vaultPath: vaultPath(), dataDir: dataDir() });
-        const text = results.length === 0
-          ? "No matching notes found."
-          : results.map((result, index) => [
-              `**${index + 1}. ${result.title}** (${result.confidence})`,
-              `Path: ${result.path}`,
-              result.heading ? `Section: ${result.heading} (lines ${result.startLine}-${result.endLine})` : `Lines: ${result.startLine}-${result.endLine}`,
-              result.excerpt,
-            ].join("\n")).join("\n\n---\n\n");
+        const config = loadConfig();
+        const results = await searchVault({ query, limit, rebuild, vaultPath: config.vaultPath, dataDir: config.dataDir });
+        const text = formatVaultResults(results);
         return { content: [{ type: "text" as const, text }] };
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

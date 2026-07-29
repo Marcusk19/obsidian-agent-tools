@@ -186,3 +186,23 @@ export async function searchVault(options: VaultSearchOptions): Promise<VaultSea
 export function defaultDataDir(home = process.env.HOME || "/tmp"): string {
   return join(home, ".local", "share", "obsidian-agent-tools");
 }
+
+/**
+ * Renders vault search results as the Markdown block shared by the CLI
+ * command and the MCP tool.
+ */
+export function formatVaultResults(results: VaultSearchResult[]): string {
+  if (results.length === 0) return "No matching notes found.";
+  return results
+    .map((result, index) =>
+      [
+        `**${index + 1}. ${result.title}** (${result.confidence})`,
+        `Path: ${result.path}`,
+        result.heading
+          ? `Section: ${result.heading} (lines ${result.startLine}-${result.endLine})`
+          : `Lines: ${result.startLine}-${result.endLine}`,
+        result.excerpt,
+      ].join("\n"),
+    )
+    .join("\n\n---\n\n");
+}
