@@ -1,10 +1,7 @@
 import { type VaultIndexDatabase } from "../db/vault-index.js";
 import { embed as defaultEmbed } from "./embed.js";
-export interface MemoryScopeContext {
-    repository?: string;
-    project?: string;
-    query?: string;
-}
+import { type MemoryScopeContext, type VaultSearchResult } from "./retrieval-policy.js";
+export type { MemoryScopeContext, VaultSearchResult } from "./retrieval-policy.js";
 export interface VaultSearchOptions {
     query: string;
     vaultPath: string;
@@ -18,18 +15,9 @@ export interface VaultSearchOptions {
     memoryScope?: MemoryScopeContext;
     semantic?: boolean;
 }
-export interface VaultSearchResult {
-    path: string;
-    title: string;
-    heading: string;
-    startLine: number;
-    endLine: number;
-    excerpt: string;
-    score: number;
-    semanticScore: number;
-    lexicalScore: number;
-    keywordConfirmed: boolean;
-    confidence: "confirmed" | "semantic";
-}
+/**
+ * Synchronizes the vault and applies retrieval policy before returning results.
+ * The database option lets tests and internal callers reuse an already-synced index.
+ */
 export declare function searchVault(options: VaultSearchOptions): Promise<VaultSearchResult[]>;
 export declare function defaultDataDir(home?: string): string;
