@@ -28,6 +28,10 @@ Cross-harness tools for using an Obsidian vault from agent runtimes. The package
 | `OBSIDIAN_MEMORY_PROJECT_RESULTS` | `1` | Maximum current-project candidate |
 | `OBSIDIAN_MEMORY_BROAD_RESULTS` | `0` | Broad-vault candidates; set above zero to opt in for explicit recall prompts |
 | `OBSIDIAN_AGENT_CONTEXT` | package-local in Pi; `$HOME/.local/bin/obsidian-agent-context` otherwise | Override the shared retrieval executable used by Pi and Claude hooks |
+| `OBSIDIAN_MEMORY_DURABLE_DIR` | `3_Resource/agent memory/` | Vault-relative prefix for durable agent-memory notes |
+| `OBSIDIAN_PROJECTS_DIR` | `1_Projects` | Vault-relative prefix for project notes; used for project-scoped retrieval |
+| `OBSIDIAN_VAULT_SECTIONS` | `1_Projects/,2_Areas/,3_Resource/,4_Archive/` | Comma-separated vault-relative prefixes searched during broad retrieval; set to empty string to search the whole vault |
+| `OBSIDIAN_SESSIONS_DIR` | `4_Archive/_agent_sessions` | Vault-relative directory where session summaries are written |
 
 Session summaries are generated locally. Transcripts are not sent to Vertex AI or another remote provider.
 
@@ -46,6 +50,29 @@ ollama pull qwen2.5:7b
 ```
 
 ## MCP server
+
+### Automated setup (Claude Code)
+
+Run the installer to build, register the MCP server, and symlink all three
+hooks in one step:
+
+```bash
+./scripts/install-claude-hooks.sh
+```
+
+Options:
+
+| Flag | Description |
+|------|-------------|
+| `--vault PATH` | Vault path (defaults to `OBSIDIAN_VAULT` env var or `~/obsidian-git-sync`) |
+| `--no-mcp` | Skip MCP server registration |
+| `--no-models` | Skip Ollama model pulls |
+| `--dry-run` | Print what would be done without making changes |
+
+The script detects existing hook files, backs them up, and reports what it
+did. Restart Claude Code after running it.
+
+### Manual setup
 
 Register the MCP server with Claude Code or another MCP client:
 
