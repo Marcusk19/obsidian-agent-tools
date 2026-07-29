@@ -1,5 +1,5 @@
 export interface SearchVaultArgs {
-    command: "vault";
+    command: "vault" | "status";
     query: string;
     limit: number;
     rebuild: boolean;

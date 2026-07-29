@@ -1,10 +1,12 @@
 import { fileURLToPath } from "node:url";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
+import { closeVaultIndex, openVaultIndex, readVaultIndexStatus } from "../db/vault-index.js";
 import { searchVault } from "../search/vault-search.js";
 export function parseArgs(args) {
-    if (args[0] !== "vault")
-        throw new Error("Usage: obsidian-agent-search vault [--limit N] [--rebuild] <query>");
+    if (args[0] !== "vault" && args[0] !== "status")
+        throw new Error("Usage: obsidian-agent-search vault [--limit N] [--rebuild] <query> | status");
+    const command = args[0];
     let limit = 10;
     let rebuild = false;
     const queryParts = [];
@@ -27,9 +29,11 @@ export function parseArgs(args) {
         }
     }
     const query = queryParts.join(" ").trim();
-    if (!query)
+    if (command === "vault" && !query)
         throw new Error("Usage: obsidian-agent-search vault [--limit N] [--rebuild] <query>");
-    return { command: "vault", query, limit, rebuild };
+    if (command === "status" && query)
+        throw new Error("Usage: obsidian-agent-search status");
+    return { command, query, limit, rebuild };
 }
 function configuredVault() {
     return process.env.OBSIDIAN_VAULT || join(process.env.HOME || "/tmp", "obsidian-git-sync");
@@ -39,6 +43,21 @@ function configuredDataDir() {
 }
 export async function run(args) {
     const parsed = parseArgs(args);
+    if (parsed.command === "status") {
+        const db = openVaultIndex(configuredDataDir());
+        try {
+            const status = readVaultIndexStatus(db);
+            process.stdout.write(JSON.stringify({
+                ...status,
+                vaultPath: configuredVault(),
+                dataDir: configuredDataDir(),
+            }, null, 2) + "\n");
+        }
+        finally {
+            closeVaultIndex(db);
+        }
+        return;
+    }
     const results = await searchVault({
         query: parsed.query,
         limit: parsed.limit,

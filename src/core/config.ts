@@ -13,6 +13,17 @@ export interface AgentConfig {
   memoryMaxResults: number;
   memoryProjectResults: number;
   memoryBroadResults: number;
+  /** Vault-relative prefix for durable agent-memory notes. */
+  memoryDurableDir: string;
+  /** Vault-relative prefix for project notes, used for project-scoped retrieval. */
+  projectsDir: string;
+  /**
+   * Vault-relative path prefixes searched during broad retrieval.
+   * An empty array means the whole vault is searched without a prefix filter.
+   */
+  vaultSections: string[];
+  /** Vault-relative directory where session summaries are written. */
+  sessionsDir: string;
 }
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
@@ -28,6 +39,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
     return Number.isFinite(value) && value >= 0 ? value : fallback;
   };
 
+  const parseVaultSections = (raw: string | undefined): string[] | null => {
+    if (raw === undefined) return null;
+    const trimmed = raw.trim();
+    if (trimmed === "") return [];
+    return trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+  };
+
   return {
     vaultPath: env.OBSIDIAN_VAULT || join(home, "obsidian-git-sync"),
     dataDir: env.OBSIDIAN_DATA_DIR || join(home, ".local", "share", "obsidian-agent-tools"),
@@ -40,5 +58,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
     memoryMaxResults: nonNegativeNumber("OBSIDIAN_MEMORY_MAX_RESULTS", 1),
     memoryProjectResults: nonNegativeNumber("OBSIDIAN_MEMORY_PROJECT_RESULTS", 1),
     memoryBroadResults: nonNegativeNumber("OBSIDIAN_MEMORY_BROAD_RESULTS", 0),
+    memoryDurableDir: env.OBSIDIAN_MEMORY_DURABLE_DIR?.trim() || "3_Resource/agent memory/",
+    projectsDir: env.OBSIDIAN_PROJECTS_DIR?.trim() || "1_Projects",
+    vaultSections: parseVaultSections(env.OBSIDIAN_VAULT_SECTIONS) ??
+      ["1_Projects/", "2_Areas/", "3_Resource/", "4_Archive/"],
+    sessionsDir: env.OBSIDIAN_SESSIONS_DIR?.trim() || "4_Archive/_agent_sessions",
   };
 }

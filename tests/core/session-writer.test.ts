@@ -7,7 +7,7 @@ import { createSessionWriter } from "../../src/core/session-writer.js";
 describe("session writer", () => {
   it("creates and appends dated agent session files", async () => {
     const vaultPath = await mkdtemp(join(tmpdir(), "agent-vault-"));
-    const writer = createSessionWriter({ vaultPath } as never);
+    const writer = createSessionWriter({ vaultPath, sessionsDir: "4_Archive/_agent_sessions" } as never);
     const session = { runtime: "pi" as const, sessionId: "s1", transcript: "x", cwd: "/tmp" };
     const date = new Date("2026-07-15T10:30:00Z");
     const path = await writer.append(session, { topic: "First", summary: "First summary." }, date);

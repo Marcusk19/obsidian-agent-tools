@@ -115,6 +115,26 @@ function initializeSchema(db) {
     setMeta.run("chunker_version", VAULT_CHUNKER_VERSION);
     setMeta.run("index_fingerprint", VAULT_INDEX_FINGERPRINT);
 }
+export function readVaultIndexStatus(db) {
+    const value = (key) => metaValue(db, key);
+    const count = (query, value) => {
+        const statement = db.prepare(query);
+        const row = value === undefined ? statement.get() : statement.get(value);
+        return row.count;
+    };
+    return {
+        schemaVersion: value("schema_version"),
+        fingerprint: value("index_fingerprint"),
+        embeddingModel: value("embedding_model"),
+        embeddingDimension: value("embedding_dimension"),
+        chunkerVersion: value("chunker_version"),
+        notes: count("SELECT COUNT(*) AS count FROM vault_notes"),
+        chunks: count("SELECT COUNT(*) AS count FROM vault_chunks"),
+        readyEmbeddings: count("SELECT COUNT(*) AS count FROM vault_chunks WHERE embedding_status = ?", "ready"),
+        failedEmbeddings: count("SELECT COUNT(*) AS count FROM vault_chunks WHERE embedding_status = ?", "failed"),
+        skippedEmbeddings: count("SELECT COUNT(*) AS count FROM vault_chunks WHERE embedding_status = ?", "skipped"),
+    };
+}
 export function rebuildVaultIndex(dataDir) {
     const path = vaultIndexPath(dataDir);
     for (const suffix of ["", "-wal", "-shm"]) {

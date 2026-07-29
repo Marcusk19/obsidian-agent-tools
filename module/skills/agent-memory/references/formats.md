@@ -16,6 +16,8 @@ tags:
   - agent-memory/correction
 created: 2026-04-07
 last_confirmed: 2026-04-07
+# Optional: automatic retrieval excludes the note after this date.
+valid_until: 2026-12-31
 source: "[[Source note]]"
 ---
 # Use the repository's documented test command
@@ -43,7 +45,8 @@ Allowed values:
 
 Use the narrowest supported scope. Use meaningful wikilinks to existing topics,
 repositories, projects, sources, related memories, and replacements. Do not
-create placeholder notes solely for graph connectivity.
+create placeholder notes solely for graph connectivity. `valid_until` is optional
+and uses `YYYY-MM-DD`; expired memories are excluded from automatic retrieval.
 
 ## Project memory
 

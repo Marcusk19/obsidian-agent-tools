@@ -1,17 +1,19 @@
 import { fileURLToPath } from "node:url";
 import { realpathSync } from "node:fs";
 import { join } from "node:path";
+import { closeVaultIndex, openVaultIndex, readVaultIndexStatus } from "../db/vault-index.js";
 import { searchVault } from "../search/vault-search.js";
 
 export interface SearchVaultArgs {
-  command: "vault";
+  command: "vault" | "status";
   query: string;
   limit: number;
   rebuild: boolean;
 }
 
 export function parseArgs(args: string[]): SearchVaultArgs {
-  if (args[0] !== "vault") throw new Error("Usage: obsidian-agent-search vault [--limit N] [--rebuild] <query>");
+  if (args[0] !== "vault" && args[0] !== "status") throw new Error("Usage: obsidian-agent-search vault [--limit N] [--rebuild] <query> | status");
+  const command = args[0] as "vault" | "status";
   let limit = 10;
   let rebuild = false;
   const queryParts: string[] = [];
@@ -32,8 +34,9 @@ export function parseArgs(args: string[]): SearchVaultArgs {
   }
 
   const query = queryParts.join(" ").trim();
-  if (!query) throw new Error("Usage: obsidian-agent-search vault [--limit N] [--rebuild] <query>");
-  return { command: "vault", query, limit, rebuild };
+  if (command === "vault" && !query) throw new Error("Usage: obsidian-agent-search vault [--limit N] [--rebuild] <query>");
+  if (command === "status" && query) throw new Error("Usage: obsidian-agent-search status");
+  return { command, query, limit, rebuild };
 }
 
 function configuredVault(): string {
@@ -46,6 +49,20 @@ function configuredDataDir(): string {
 
 export async function run(args: string[]): Promise<void> {
   const parsed = parseArgs(args);
+  if (parsed.command === "status") {
+    const db = openVaultIndex(configuredDataDir());
+    try {
+      const status = readVaultIndexStatus(db);
+      process.stdout.write(JSON.stringify({
+        ...status,
+        vaultPath: configuredVault(),
+        dataDir: configuredDataDir(),
+      }, null, 2) + "\n");
+    } finally {
+      closeVaultIndex(db);
+    }
+    return;
+  }
   const results = await searchVault({
     query: parsed.query,
     limit: parsed.limit,

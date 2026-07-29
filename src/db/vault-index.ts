@@ -27,6 +27,19 @@ export const VAULT_INDEX_FINGERPRINT = createHash("sha256")
 
 export type VaultIndexDatabase = Database.Database;
 
+export interface VaultIndexStatus {
+  schemaVersion: string | undefined;
+  fingerprint: string | undefined;
+  embeddingModel: string | undefined;
+  embeddingDimension: string | undefined;
+  chunkerVersion: string | undefined;
+  notes: number;
+  chunks: number;
+  readyEmbeddings: number;
+  failedEmbeddings: number;
+  skippedEmbeddings: number;
+}
+
 export interface VaultNoteRecord {
   path: string;
   title: string;
@@ -138,6 +151,27 @@ function initializeSchema(db: VaultIndexDatabase): void {
   setMeta.run("embedding_dimension", String(VAULT_INDEX_DIM));
   setMeta.run("chunker_version", VAULT_CHUNKER_VERSION);
   setMeta.run("index_fingerprint", VAULT_INDEX_FINGERPRINT);
+}
+
+export function readVaultIndexStatus(db: VaultIndexDatabase): VaultIndexStatus {
+  const value = (key: string) => metaValue(db, key);
+  const count = (query: string, value?: string) => {
+    const statement = db.prepare(query);
+    const row = value === undefined ? statement.get() : statement.get(value);
+    return (row as { count: number }).count;
+  };
+  return {
+    schemaVersion: value("schema_version"),
+    fingerprint: value("index_fingerprint"),
+    embeddingModel: value("embedding_model"),
+    embeddingDimension: value("embedding_dimension"),
+    chunkerVersion: value("chunker_version"),
+    notes: count("SELECT COUNT(*) AS count FROM vault_notes"),
+    chunks: count("SELECT COUNT(*) AS count FROM vault_chunks"),
+    readyEmbeddings: count("SELECT COUNT(*) AS count FROM vault_chunks WHERE embedding_status = ?", "ready"),
+    failedEmbeddings: count("SELECT COUNT(*) AS count FROM vault_chunks WHERE embedding_status = ?", "failed"),
+    skippedEmbeddings: count("SELECT COUNT(*) AS count FROM vault_chunks WHERE embedding_status = ?", "skipped"),
+  };
 }
 
 export function rebuildVaultIndex(dataDir: string): void {

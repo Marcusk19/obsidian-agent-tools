@@ -13,6 +13,14 @@ export function loadConfig(env = process.env) {
         const value = Number(raw);
         return Number.isFinite(value) && value >= 0 ? value : fallback;
     };
+    const parseVaultSections = (raw) => {
+        if (raw === undefined)
+            return null;
+        const trimmed = raw.trim();
+        if (trimmed === "")
+            return [];
+        return trimmed.split(",").map((s) => s.trim()).filter(Boolean);
+    };
     return {
         vaultPath: env.OBSIDIAN_VAULT || join(home, "obsidian-git-sync"),
         dataDir: env.OBSIDIAN_DATA_DIR || join(home, ".local", "share", "obsidian-agent-tools"),
@@ -25,5 +33,10 @@ export function loadConfig(env = process.env) {
         memoryMaxResults: nonNegativeNumber("OBSIDIAN_MEMORY_MAX_RESULTS", 1),
         memoryProjectResults: nonNegativeNumber("OBSIDIAN_MEMORY_PROJECT_RESULTS", 1),
         memoryBroadResults: nonNegativeNumber("OBSIDIAN_MEMORY_BROAD_RESULTS", 0),
+        memoryDurableDir: env.OBSIDIAN_MEMORY_DURABLE_DIR?.trim() || "3_Resource/agent memory/",
+        projectsDir: env.OBSIDIAN_PROJECTS_DIR?.trim() || "1_Projects",
+        vaultSections: parseVaultSections(env.OBSIDIAN_VAULT_SECTIONS) ??
+            ["1_Projects/", "2_Areas/", "3_Resource/", "4_Archive/"],
+        sessionsDir: env.OBSIDIAN_SESSIONS_DIR?.trim() || "4_Archive/_agent_sessions",
     };
 }

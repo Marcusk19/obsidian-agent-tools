@@ -17,8 +17,8 @@ describe("renderMemoryContext", () => {
     expect(result.rendered).toContain("## Relevant memory");
     expect(result.rendered).toContain("Use pnpm test for this repository.");
     expect(result.rendered).toContain("3_Resource/agent memory/rule.md");
+    expect(result.rendered).toContain("Confirmed durable guidance");
     expect(result.rendered).not.toContain("confirmed");
-    expect(result.rendered).not.toContain("durable");
     expect(result.truncated).toBe(false);
   });
 

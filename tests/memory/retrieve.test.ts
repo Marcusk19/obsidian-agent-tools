@@ -25,6 +25,10 @@ function baseConfig(overrides: Partial<AgentConfig> = {}): AgentConfig {
     memoryMaxResults: 1,
     memoryProjectResults: 1,
     memoryBroadResults: 0,
+    memoryDurableDir: "3_Resource/agent memory/",
+    projectsDir: "1_Projects",
+    vaultSections: ["1_Projects/", "2_Areas/", "3_Resource/", "4_Archive/"],
+    sessionsDir: "4_Archive/_agent_sessions",
     ...overrides,
   };
 }

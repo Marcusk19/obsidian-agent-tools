@@ -3,8 +3,8 @@ import { basename, dirname, parse, resolve } from "node:path";
 import { rewriteQuery } from "../search/rewrite.js";
 import { searchVault } from "../search/vault-search.js";
 import { renderMemoryContext } from "./render.js";
-const DURABLE_PREFIXES = ["3_Resource/agent memory/"];
-const BROAD_PREFIXES = ["1_Projects/", "2_Areas/", "3_Resource/", "4_Archive/"];
+const DEFAULT_DURABLE_DIR = "3_Resource/agent memory/";
+const DEFAULT_BROAD_PREFIXES = ["1_Projects/", "2_Areas/", "3_Resource/", "4_Archive/"];
 const DURABLE_STATUSES = ["active"];
 const BROAD_HINT = /\b(history|notes?|log|plans?|decision|decide|remember|previous|last|yesterday|today|todo|carry\s+over|on my plate)\b/i;
 const defaultDependencies = { search: searchVault };
@@ -43,6 +43,7 @@ export async function retrieveMemoryContext(request, config, dependencies = {}) 
                     tier,
                     confidence: result.confidence,
                     excerpt: result.excerpt,
+                    sourceHeading: result.heading,
                     score: result.score,
                 });
                 seen.add(result.path);
@@ -56,17 +57,19 @@ export async function retrieveMemoryContext(request, config, dependencies = {}) 
             return [];
         }
     };
-    candidates.push(...await collectTier("durable", config.memoryMaxResults, DURABLE_PREFIXES, {
+    const durablePrefixes = [config.memoryDurableDir || DEFAULT_DURABLE_DIR];
+    const broadPrefixes = config.vaultSections.length > 0 ? config.vaultSections : DEFAULT_BROAD_PREFIXES;
+    candidates.push(...await collectTier("durable", config.memoryMaxResults, durablePrefixes, {
         statuses: DURABLE_STATUSES,
         durableScope: true,
         confirmedOnly: true,
     }));
-    const projectPrefixes = scopedProjectPrefixes(project, repository);
+    const projectPrefixes = scopedProjectPrefixes(project, repository, config.projectsDir);
     if (projectPrefixes.length > 0) {
         candidates.push(...await collectTier("project", config.memoryProjectResults, projectPrefixes));
     }
     if (config.memoryBroadResults > 0 && BROAD_HINT.test(prompt)) {
-        candidates.push(...await collectTier("broad", config.memoryBroadResults, BROAD_PREFIXES, { confirmedOnly: true }));
+        candidates.push(...await collectTier("broad", config.memoryBroadResults, broadPrefixes, { confirmedOnly: true }));
     }
     const { rendered, truncated } = renderMemoryContext(candidates, renderLimit);
     return { candidates, rendered, truncated };
@@ -94,7 +97,8 @@ function inferRepository(cwd) {
     }
     return undefined;
 }
-function scopedProjectPrefixes(project, repository) {
+function scopedProjectPrefixes(project, repository, projectsDir = "1_Projects") {
+    const dir = projectsDir.replace(/\/$/, "");
     const keys = [...new Set([project, repository].filter((value) => Boolean(value)))];
-    return keys.map((key) => `1_Projects/${key}`);
+    return keys.map((key) => `${dir}/${key}`);
 }

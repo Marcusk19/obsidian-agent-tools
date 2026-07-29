@@ -154,6 +154,36 @@ Working in this repository.
     expect(results[0].excerpt).not.toContain("status: active");
   });
 
+  it("filters expired memories", async () => {
+    root = mkdtempSync(join(tmpdir(), "vault-search-test-"));
+    const vaultPath = join(root, "vault");
+    const dataDir = join(root, "data");
+    mkdirSync(join(vaultPath, "3_Resource", "agent memory"), { recursive: true });
+    writeFileSync(join(vaultPath, "3_Resource", "agent memory", "expired.md"), `---
+status: active
+valid_until: 2000-01-01
+scope: global
+---
+## Rule
+An expired rule.
+`);
+    db = openVaultIndex(dataDir);
+
+    const results = await searchVault({
+      query: "expired rule",
+      vaultPath,
+      dataDir,
+      db,
+      semantic: false,
+      embed: vi.fn(),
+      pathPrefixes: ["3_Resource/agent memory/"],
+      statuses: ["active"],
+      memoryScope: { query: "expired rule" },
+    });
+
+    expect(results).toEqual([]);
+  });
+
   it("filters durable memories that do not match the current scope", async () => {
     root = mkdtempSync(join(tmpdir(), "vault-search-test-"));
     const vaultPath = join(root, "vault");

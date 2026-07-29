@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, openSync, closeSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, closeSync, readFileSync, writeFileSync, unlinkSync, renameSync } from "node:fs";
 import { join } from "node:path";
 import { renderSessionEntry } from "./session-format.js";
 function sleep(ms) {
@@ -23,20 +23,19 @@ export function createSessionWriter(config) {
         async append(session, result, now = new Date()) {
             const date = now.toISOString().slice(0, 10);
             const time = now.toTimeString().slice(0, 5);
-            const directory = join(config.vaultPath, "4_Archive", "_agent_sessions");
+            const directory = join(config.vaultPath, config.sessionsDir);
             const filePath = join(directory, `${date}.md`);
             const lockPath = `${filePath}.lock`;
             mkdirSync(directory, { recursive: true });
             await acquireLock(lockPath);
             try {
                 const entry = renderSessionEntry(session, result, time);
-                if (!existsSync(filePath)) {
-                    writeFileSync(filePath, `# Agent Sessions — ${date}\n\n${entry}`);
-                }
-                else {
-                    const content = readFileSync(filePath, "utf8");
-                    writeFileSync(filePath, `${content.trimEnd()}\n\n---\n\n${entry}`);
-                }
+                const nextContent = existsSync(filePath)
+                    ? `${readFileSync(filePath, "utf8").trimEnd()}\n\n---\n\n${entry}`
+                    : `# Agent Sessions — ${date}\n\n${entry}`;
+                const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+                writeFileSync(temporaryPath, nextContent, "utf8");
+                renameSync(temporaryPath, filePath);
                 return filePath;
             }
             finally {
