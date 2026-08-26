@@ -21,7 +21,7 @@ Cross-harness tools for using an Obsidian vault from agent runtimes. The package
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | Local Ollama endpoint |
 | `OBSIDIAN_SUMMARY_MODEL` | `qwen2.5:7b` | Local model used for session summaries |
 | `OBSIDIAN_AGENT_SUMMARIZER` | package-local in Pi; repository launcher otherwise | Override the shared summarizer executable |
-| `OBSIDIAN_MEMORY_ENABLED` | enabled | Set to `0` to disable automatic memory-context injection |
+| `OBSIDIAN_MEMORY_ENABLED` | enabled | Set to `0` to disable automatic memory-context injection and automatic session-end summarization |
 | `OBSIDIAN_MEMORY_TIMEOUT_MS` | `5000` | Maximum time Pi and Claude hooks wait for memory retrieval |
 | `OBSIDIAN_MEMORY_MAX_CHARS` | `2000` | Rendered-character budget for injected memory context |
 | `OBSIDIAN_MEMORY_MAX_RESULTS` | `1` | Maximum confirmed durable-memory candidate |
@@ -178,7 +178,10 @@ depend on it, or when explicit history/notes retrieval requires escalation.
 Retrieval errors never block the prompt. Hooks wait up to five seconds by default;
 set `OBSIDIAN_MEMORY_TIMEOUT_MS` to tune that limit. Deeper manual searches still
 use semantic retrieval when available. Set
-`OBSIDIAN_MEMORY_ENABLED=0` to opt out without removing the installed hooks.
+`OBSIDIAN_MEMORY_ENABLED=0` to opt out without removing the installed hooks. In
+the Pi integration this also disables automatic session-end summarization to
+the vault, so the toggle fully decouples the vault from acting as an automatic
+memory store; MCP tools and manual CLI search/retrieval remain available.
 
 ### Pi
 

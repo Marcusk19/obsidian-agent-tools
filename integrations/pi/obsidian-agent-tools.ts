@@ -138,6 +138,7 @@ export default function obsidianAgentTools(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", async (event, ctx) => {
+    if (process.env.OBSIDIAN_MEMORY_ENABLED === "0") return;
     try {
       const reason = (event as { reason?: string }).reason;
       log(`shutdown reason=${reason}`);

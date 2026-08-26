@@ -216,4 +216,25 @@ describe("Pi integration", () => {
       expect.objectContaining({ detached: true, stdio: "ignore" }),
     );
   });
+
+  it("skips auto-summarization on quit when the memory opt-out is set", async () => {
+    process.env.OBSIDIAN_MEMORY_ENABLED = "0";
+    const handlers: Record<string, (event: any, ctx: any) => Promise<any> | any> = {};
+    const pi = createPi(handlers);
+    const branch = [
+      { type: "message", timestamp: "2026-07-23T10:00:00Z", message: { role: "user", content: "Please summarize this session after we finish enough meaningful implementation work to exceed the minimum transcript length." } },
+      { type: "message", timestamp: "2026-07-23T10:01:00Z", message: { role: "assistant", content: "Implemented the requested packaging changes while preserving the existing memory retrieval and detached session summarization behavior." } },
+    ];
+
+    obsidianAgentTools(pi);
+    await handlers.session_shutdown!({ reason: "quit" }, {
+      cwd: "/repo",
+      sessionManager: {
+        getBranch: () => branch,
+        getSessionFile: () => "/sessions/example.jsonl",
+      },
+    });
+
+    expect(spawnMock).not.toHaveBeenCalled();
+  });
 });
